@@ -58,6 +58,7 @@
     .finished-item { display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; border-left: 5px solid var(--secondary); padding: 8px 12px; border-radius: 6px; }
     .help-text { font-size: 0.8rem; color: #64748b; margin-bottom: 10px; }
     .rating-calc { font-size: 0.85rem; color: #64748b; font-weight: bold; margin-top: 4px; }
+    .sync-section { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -65,8 +66,8 @@
   <header>
     <h1>⏱️ Regataide</h1>
     <nav class="nav-tabs">
-      <button class="tab-btn active" onclick="switchTab('tab-participants')">👥 Participants</button>
       <button class="tab-btn" onclick="switchTab('tab-config')">⚙️ Configuration</button>
+      <button class="tab-btn active" onclick="switchTab('tab-participants')">👥 Participants</button>
       <button class="tab-btn highlight" onclick="switchTab('tab-race')">⛵ Course en Direct</button>
     </nav>
   </header>
@@ -75,6 +76,18 @@
 
     <!-- ONGLET 1 : PARTICIPANTS -->
     <section id="tab-participants" class="panel active">
+      <!-- ZONE D'IMPORT / EXPORT LOCAL (SOLUTION 1) -->
+      <div class="card" style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <h3>💾 Sauvegarde de la Flotte (Fichier Local)</h3>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button onclick="exportLocalFleet()" class="btn btn-primary">📤 Exporter la flotte</button>
+          <label class="btn btn-warning" style="margin:0; cursor:pointer;">
+            📥 Importer la flotte
+            <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importLocalFleet(event)">
+          </label>
+        </div>
+      </div>
+
       <div class="split">
         <div class="card">
           <h2 id="form-title">Ajouter un Voilier</h2>
@@ -108,6 +121,18 @@
 
     <!-- ONGLET 2 : CONFIGURATION -->
     <section id="tab-config" class="panel">
+      <!-- SYNC CLOUD (SOLUTION 2) -->
+      <div class="card">
+        <h2>☁️ Synchronisation Cloud (Via Google Sheets)</h2>
+        <p class="help-text">Renseignez l'URL de votre application Web Google Apps Script et votre mot de passe pour synchroniser la flotte et la course en direct entre vos appareils [1].</p>
+        <div class="form-group"><label>URL de l'application Web Google :</label><input type="text" id="sync-url" placeholder="https://script.google.com/macros/s/.../exec"></div>
+        <div class="form-group"><label>Mot de passe de sécurité :</label><input type="password" id="sync-pass" placeholder="Entrez le mot de passe défini dans votre script"></div>
+        <div class="sync-section">
+          <button onclick="cloudPush()" class="btn btn-success">📤 Sauvegarder sur le Cloud</button>
+          <button onclick="cloudPull()" class="btn btn-primary">📥 Récupérer du Cloud</button>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Nouvelle course</h2>
         <div class="form-group row">
@@ -164,7 +189,13 @@
     let countdownInterval = null;
     let raceSecondsLeft = 300;
     let audioCtx = null;
-    let draggedIdx = null; // Stockage de l'indice pour le drag and drop
+    let draggedIdx = null;
+
+    // Charger les réglages Cloud stockés
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("sync-url").value = localStorage.getItem("regataide_sync_url") || "";
+      document.getElementById("sync-pass").value = localStorage.getItem("regataide_sync_pass") || "";
+    });
 
     function initAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -223,7 +254,6 @@
 
       const proceedSave = (imgUrl) => {
         if (editingBoatId) {
-          // Mode modification
           const index = participants.findIndex(p => p.id === editingBoatId);
           if (index > -1) {
             participants[index].nom = nom;
@@ -232,10 +262,8 @@
             participants[index].handicap = handicap;
             participants[index].modele = modele;
             participants[index].voile = voile;
-            if (imgUrl) participants[index].photo = imgUrl; // On ne change l'image que si une nouvelle est fournie
+            if (imgUrl) participants[index].photo = imgUrl;
           }
-          
-          // Répercuter la modification dans la course active si ce bateau y participe
           if (activeRace) {
             const activeBoatIdx = activeRace.participants.findIndex(p => p.id === editingBoatId);
             if (activeBoatIdx > -1) {
@@ -249,19 +277,16 @@
               localStorage.setItem('regataide_race', JSON.stringify(activeRace));
             }
           }
-
           editingBoatId = null;
           document.getElementById('form-title').textContent = "Ajouter un Voilier";
           document.getElementById('btn-submit-boat').textContent = "Enregistrer le bateau";
           document.getElementById('btn-cancel-edit').style.display = "none";
         } else {
-          // Mode ajout
           const finalImg = imgUrl || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%231e3d59"/><path d="M50,20 L30,65 L50,60 L70,65 Z" fill="%23fff"/></svg>';
           participants.push({
             id: 'b_' + Date.now(), nom, capitaine: cap, rating, handicap, modele, voile, photo: finalImg
           });
         }
-
         localStorage.setItem('regataide_parts', JSON.stringify(participants));
         document.getElementById('form-boat').reset();
         updateCalculatedHandicap();
@@ -277,24 +302,19 @@
       }
     }
 
-    // --- ENTREE EN MODE EDITION ---
     function editBoat(id) {
       const boat = participants.find(p => p.id === id);
       if (!boat) return;
-
       editingBoatId = id;
       document.getElementById('b-nom').value = boat.nom;
       document.getElementById('b-cap').value = boat.capitaine;
       document.getElementById('b-rating').value = boat.rating || 100;
       document.getElementById('b-modele').value = boat.modele || '';
       document.getElementById('b-voile').value = boat.voile || '';
-      
       updateCalculatedHandicap();
-
       document.getElementById('form-title').textContent = "Modifier un Voilier";
       document.getElementById('btn-submit-boat').textContent = "Mettre à jour le bateau";
       document.getElementById('btn-cancel-edit').style.display = "inline-block";
-      
       switchTab('tab-participants');
     }
 
@@ -315,7 +335,92 @@
       }
     }
 
-    // --- GESTION DE LA COURSE ---
+    // --- SOLUTION 1 : IMPORT / EXPORT LOCAL (JSON) ---
+    function exportLocalFleet() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(participants));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "regataide_flotte.json");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function importLocalFleet(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (Array.isArray(imported)) {
+            if (confirm(`Importer ces ${imported.length} bateaux et écraser votre flotte actuelle ?`)) {
+              participants = imported;
+              localStorage.setItem('regataide_parts', JSON.stringify(participants));
+              render();
+              alert("Importation réussie !");
+            }
+          } else { alert("Format de fichier invalide."); }
+        } catch (err) { alert("Erreur lors de la lecture du fichier."); }
+      };
+      reader.readAsText(file);
+    }
+
+    // --- SOLUTION 2 : SYNCHRONISATION CLOUD SECURISEE (GOOGLE APPS SCRIPT) ---
+    async function cloudPush() {
+      const url = document.getElementById("sync-url").value;
+      const pass = document.getElementById("sync-pass").value;
+      if (!url || !pass) return alert("Veuillez renseigner l'URL et le mot de passe cloud dans l'onglet Configuration.");
+
+      localStorage.setItem("regataide_sync_url", url);
+      localStorage.setItem("regataide_sync_pass", pass);
+
+      const packet = {
+        password: pass,
+        data: { participants, activeRace }
+      };
+
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          mode: "no-cors", // Requis pour éviter les restrictions CORS de Google Apps Script
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(packet)
+        });
+        alert("Demande d'envoi transmise au Cloud ! (Vérifiez sur votre tablette en cliquant sur Récupérer)");
+      } catch (err) {
+        alert("Erreur de connexion avec le Cloud.");
+      }
+    }
+
+    async function cloudPull() {
+      const url = document.getElementById("sync-url").value;
+      if (!url) return alert("Veuillez renseigner l'URL cloud dans l'onglet Configuration.");
+      
+      localStorage.setItem("regataide_sync_url", url);
+
+      try {
+        const response = await fetch(url);
+        const cloudData = await response.json();
+        
+        if (cloudData.participants) {
+          if (confirm(`Données cloud trouvées. Importer la flotte (${cloudData.participants.length} bateaux) ?`)) {
+            participants = cloudData.participants;
+            activeRace = cloudData.activeRace;
+            localStorage.setItem('regataide_parts', JSON.stringify(participants));
+            localStorage.setItem('regataide_race', JSON.stringify(activeRace));
+            render();
+            alert("Synchronisation Cloud terminée !");
+          }
+        } else {
+          alert("Aucune donnée valide sur le Cloud.");
+        }
+      } catch (err) {
+        alert("Erreur lors de la récupération : " + err.toString());
+      }
+    }
+
+    // --- PREPARATION COURSE ---
     function saveAndPrepareRace() {
       const d = document.getElementById('race-date').value;
       const t = document.getElementById('race-time').value;
@@ -329,32 +434,27 @@
       switchTab('tab-race');
     }
 
-    // --- COMPORTEMENT DRAG & DROP NATIF TACTILE ---
+    // --- DRAG & DROP TACTILE ---
     function handleDragStart(e, index) {
       draggedIdx = index;
       e.dataTransfer.effectAllowed = 'move';
     }
 
-    function handleDragOver(e) {
-      e.preventDefault();
-    }
+    function handleDragOver(e) { e.preventDefault(); }
 
     function handleDrop(e, targetIdx) {
       e.preventDefault();
       if (draggedIdx === null || draggedIdx === targetIdx) return;
-      
       const list = activeRace.participants;
       const [draggedItem] = list.splice(draggedIdx, 1);
       list.splice(targetIdx, 0, draggedItem);
-      
       localStorage.setItem('regataide_race', JSON.stringify(activeRace));
       draggedIdx = null;
       render();
     }
 
-    // --- RENDER DE L'APPLICATION ---
+    // --- RENDER ---
     function render() {
-      // 1. Liste globale des participants (👥)
       const listDiv = document.getElementById('participants-list');
       listDiv.innerHTML = participants.map(b => `
         <div class="boat-item">
@@ -369,7 +469,6 @@
         </div>
       `).join('');
 
-      // 2. Grille de sélection pour la course (⚙️)
       const selDiv = document.getElementById('selection-boats-list');
       selDiv.innerHTML = participants.map(b => `
         <label class="sel-item">
@@ -380,7 +479,6 @@
 
       if (!activeRace) return;
 
-      // 3. Liste active des bateaux en course (En lice - Glisser-Déposer)
       const racingBoats = activeRace.participants.filter(b => {
         const arr = activeRace.arrivals.find(a => a.boatId === b.id);
         return !arr || !arr.finished;
@@ -412,7 +510,6 @@
         `;
       }).join('');
 
-      // 4. Liste des arrivés avec calcul compensé (Option A)
       const baseTime = new Date(`${activeRace.date}T${activeRace.heureDepart}`).getTime();
       const finishedArrivals = activeRace.arrivals.filter(a => a.finished).map(arr => {
         const boat = activeRace.participants.find(p => p.id === arr.boatId);
@@ -438,7 +535,7 @@
       `).join('');
     }
 
-    // --- ENREGISTREMENT DES TEMPS (DOUBLE CLIC DE SÉCURITÉ) ---
+    // --- CLICS ARRIVEES ---
     let lastTime = 0, lastId = null, lastFinal = false;
 
     function handlePassingClick(boatId, isFinal) {
@@ -479,14 +576,13 @@
       render();
     }
 
-    // --- CHRONOMETRE ET PAVILLONS DE DEPART ISAF ---
+    // --- DEPART ---
     function startCountdown() {
       initAudio();
       if (countdownInterval) clearInterval(countdownInterval);
       raceSecondsLeft = 300;
       updateSignals();
       playBeep(400, 880);
-
       countdownInterval = setInterval(() => {
         raceSecondsLeft--;
         if (raceSecondsLeft <= 0) {
@@ -538,7 +634,7 @@
       }
     }
 
-    // --- TELECHARGEMENT DIRECT DU CSV ---
+    // --- EXPORT CSV ---
     function exportCSV() {
       if (!activeRace) return alert("Aucune course à exporter.");
       const baseTime = new Date(`${activeRace.date}T${activeRace.heureDepart}`).getTime();
@@ -584,7 +680,6 @@
       return `${h}:${m}:${s}`;
     }
 
-    // Initialisation
     render();
   </script>
 </body>
