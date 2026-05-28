@@ -74,9 +74,8 @@
 
   <main class="content">
 
-    <!-- ONGLET 1 : PARTICIPANTS (SAUVEGARDE LOCALE UNIQUEMENT) -->
+    <!-- ONGLET 1 : PARTICIPANTS -->
     <section id="tab-participants" class="panel active">
-      <!-- IMPORT / EXPORT LOCAL DE LA FLOTTE -->
       <div class="card" style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <h3>💾 Partage de la Flotte (Fichier Local JSON)</h3>
         <div style="display: flex; gap: 10px; align-items: center;">
@@ -135,7 +134,6 @@
 
     <!-- ONGLET 3 : COURSE EN DIRECT -->
     <section id="tab-race" class="panel">
-      <!-- PANEL DE DÉPART (ISAF 5 MIN) -->
       <div class="card signal-card">
         <div>
           <div id="countdown-label" style="color: #94a3b8; font-size: 0.9rem; text-transform: uppercase;">Attente</div>
@@ -177,9 +175,14 @@
     let activeRace = JSON.parse(localStorage.getItem('regataide_race')) || null;
     let editingBoatId = null;
     let countdownInterval = null;
-    let raceSecondsLeft = 300;
+    
+    // Récupération sécurisée du démarrage de la course en cas de rafraîchissement
+    let raceStartTimestamp = localStorage.getItem('regataide_start_time') ? parseInt(localStorage.getItem('regataide_start_time')) : null;
     let audioCtx = null;
     let draggedIdx = null;
+
+    // État d'émission des signaux sonores de procédure
+    let beep5Played = false, beep4Played = false, beep1Played = false, beep0Played = false;
 
     function initAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -353,10 +356,10 @@
     // --- PREPARATION COURSE ---
     function saveAndPrepareRace() {
       const d = document.getElementById('race-date').value;
-	  let t = document.getElementById('race-time').value;
-	  if (t && t.split(':').length === 2) {
-	    t += ':00'; // Force les secondes à 00 par défaut
-	  }
+      let t = document.getElementById('race-time').value;
+      if (t && t.split(':').length === 2) {
+        t += ':00'; // Force les secondes à 00 par défaut
+      }
       const cb = document.querySelectorAll('input[name="sel-boats"]:checked');
       if (!d || !t || cb.length === 0) return alert("Configurez la date, l'heure et sélectionnez au moins un bateau.");
 
@@ -509,63 +512,97 @@
       render();
     }
 
-    // --- COMPTEUR DE DEPART ISAF ---
+    // --- COMPTEUR DE DEPART ET HORLOGE DE COURSE (DYNAMIQUE ET INCASSABLE) ---
     function startCountdown() {
       initAudio();
+      beep5Played = false; beep4Played = false; beep1Played = false; beep0Played = false;
+
+      const now = Date.now();
+      // On fixe l'heure exacte du départ à dans 5 minutes (300 secondes)
+      raceStartTimestamp = now + (300 * 1000);
+      localStorage.setItem('regataide_start_time', raceStartTimestamp);
+
       if (countdownInterval) clearInterval(countdownInterval);
-      raceSecondsLeft = 300;
-      updateSignals();
-      playBeep(400, 880);
-      countdownInterval = setInterval(() => {
-        raceSecondsLeft--;
-        if (raceSecondsLeft <= 0) {
-          clearInterval(countdownInterval);
-          raceSecondsLeft = 0;
-          handleRaceStarted();
-        } else {
-          updateSignals();
-        }
-      }, 1000);
+      countdownInterval = setInterval(updateRaceClock, 1000);
+      updateRaceClock(); // Mise à jour immédiate
     }
 
     function resetCountdown() {
-      clearInterval(countdownInterval);
-      raceSecondsLeft = 300;
-      document.getElementById('countdown-timer').textContent = "-05:00";
-      document.getElementById('countdown-label').textContent = "Attente";
-      document.getElementById('flag-display').textContent = "⬜";
-      document.getElementById('flag-text').textContent = "Pas de procédure";
-    }
-
-    function handleRaceStarted() {
-      document.getElementById('countdown-timer').textContent = "00:00";
-      document.getElementById('countdown-label').textContent = "COURSE EN COURS !";
-      document.getElementById('flag-display').textContent = "🏁";
-      document.getElementById('flag-text').textContent = "Départ validé ! Affaler le pavillon.";
-      playBeep(800, 600);
-    }
-
-    function updateSignals() {
-      const m = Math.floor(Math.abs(raceSecondsLeft) / 60).toString().padStart(2, '0');
-      const s = (Math.abs(raceSecondsLeft) % 60).toString().padStart(2, '0');
-      document.getElementById('countdown-timer').textContent = `-${m}:${s}`;
-      const f = document.getElementById('flag-display');
-      const t = document.getElementById('flag-text');
-
-      if (raceSecondsLeft > 240 && raceSecondsLeft <= 300) {
-        document.getElementById('countdown-label').textContent = "Avertissement"; f.textContent = "🚩";
-        t.textContent = "Lever pavillon de classe [1 bip sonore]";
-        if (raceSecondsLeft === 300) playBeep(250, 880);
-      } else if (raceSecondsLeft > 60 && raceSecondsLeft <= 240) {
-        document.getElementById('countdown-label').textContent = "Préparatoire"; f.textContent = "🟦";
-        t.textContent = "Lever pavillon Préparatoire (P) [1 bip sonore]";
-        if (raceSecondsLeft === 240) playBeep(250, 880);
-      } else if (raceSecondsLeft > 0 && raceSecondsLeft <= 60) {
-        document.getElementById('countdown-label').textContent = "Dernière Minute !"; f.textContent = "🏳️";
-        t.textContent = "Affaler pavillon Préparatoire [1 bip sonore LONG]";
-        if (raceSecondsLeft === 60) playBeep(700, 440);
+      if (confirm("Réinitialiser l'horloge et la procédure de départ ?")) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+        raceStartTimestamp = null;
+        localStorage.removeItem('regataide_start_time');
+        
+        document.getElementById('countdown-timer').textContent = "-05:00";
+        document.getElementById('countdown-label').textContent = "Attente";
+        document.getElementById('flag-display').textContent = "⬜";
+        document.getElementById('flag-text').textContent = "Pas de procédure";
       }
     }
+
+    function updateRaceClock() {
+      if (!raceStartTimestamp) return;
+
+      const now = Date.now();
+      const diffMs = raceStartTimestamp - now;
+
+      if (diffMs > 0) {
+        // --- PHASE 1 : DECOMPTE (NÉGATIF) ---
+        const diffSec = Math.round(diffMs / 1000);
+        const m = Math.floor(diffSec / 60).toString().padStart(2, '0');
+        const s = (diffSec % 60).toString().padStart(2, '0');
+        
+        document.getElementById('countdown-timer').textContent = `-${m}:${s}`;
+        
+        const f = document.getElementById('flag-display');
+        const t = document.getElementById('flag-text');
+
+        if (diffSec <= 300 && diffSec > 240) {
+          document.getElementById('countdown-label').textContent = "Avertissement"; f.textContent = "🚩";
+          t.textContent = "Lever pavillon de classe [1 bip]";
+          if (!beep5Played) { playBeep(250, 880); beep5Played = true; }
+        } else if (diffSec <= 240 && diffSec > 60) {
+          document.getElementById('countdown-label').textContent = "Préparatoire"; f.textContent = "🟦";
+          t.textContent = "Lever pavillon Préparatoire (P) [1 bip]";
+          if (!beep4Played) { playBeep(250, 880); beep4Played = true; }
+        } else if (diffSec <= 60 && diffSec > 0) {
+          document.getElementById('countdown-label').textContent = "Dernière Minute !"; f.textContent = "🏳️";
+          t.textContent = "Affaler pavillon Préparatoire [1 bip sonore LONG]";
+          if (!beep1Played) { playBeep(700, 440); beep1Played = true; }
+        }
+      } else {
+        // --- PHASE 2 : COURSE EN COURS (CHRONO POSITIF hh:mm:ss) ---
+        const elapsedSec = Math.round(Math.abs(diffMs) / 1000);
+        
+        document.getElementById('countdown-label').textContent = "COURSE EN COURS";
+        document.getElementById('countdown-timer').textContent = formatSec(elapsedSec);
+        document.getElementById('flag-display').textContent = "🏁";
+        document.getElementById('flag-text').textContent = "Départ validé ! Affaler le pavillon.";
+
+        if (!beep0Played) {
+          playBeep(800, 600);
+          beep0Played = true;
+        }
+      }
+    }
+
+    // --- REPRISE DE L'HORLOGE AU RECHARGEMENT ---
+    document.addEventListener("DOMContentLoaded", () => {
+      fetchParticipants();
+      fetchRaces();
+      document.getElementById('form-participant').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const res = await fetch('/api/participants', { method: 'POST', body: formData });
+        if (res.ok) { e.target.reset(); fetchParticipants(); }
+      });
+
+      // Si l'horloge tournait déjà lors du rafraîchissement ou de la mise en veille
+      if (raceStartTimestamp) {
+        countdownInterval = setInterval(updateRaceClock, 1000);
+      }
+    });
 
     // --- GENERATION DU CSV ---
     function generateCSVString() {
@@ -637,7 +674,7 @@
       
       mailBody += `==================================================\n\n`;
       mailBody += `--- DONNÉES FORMAT CSV ---\n`;
-      mailBody += generateCSVString().replace(/\uFEFF/, ""); // On colle aussi le CSV en texte brut pour que l'arbitre puisse le copier/coller dans Excel
+      mailBody += generateCSVString().replace(/\uFEFF/, "");
 
       const subject = encodeURIComponent(`Résultats Régate - ${activeRace.date}`);
       const body = encodeURIComponent(mailBody);
