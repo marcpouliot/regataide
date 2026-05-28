@@ -125,7 +125,7 @@
         <h2>Nouvelle course</h2>
         <div class="form-group row">
           <div><label>Date :</label><input type="date" id="race-date" required></div>
-          <div><label>Départ théorique :</label><input type="time" id="race-time" step="1" required></div>
+          <div><label>Départ théorique (HH:MM) :</label><input type="time" id="race-time" required></div>
         </div>
         <h3 style="margin: 15px 0 10px 0;">Sélectionner les bateaux participants :</h3>
         <div id="selection-boats-list" class="selection-grid"></div>
@@ -353,7 +353,10 @@
     // --- PREPARATION COURSE ---
     function saveAndPrepareRace() {
       const d = document.getElementById('race-date').value;
-      const t = document.getElementById('race-time').value;
+	  let t = document.getElementById('race-time').value;
+	  if (t && t.split(':').length === 2) {
+	    t += ':00'; // Force les secondes à 00 par défaut
+	  }
       const cb = document.querySelectorAll('input[name="sel-boats"]:checked');
       if (!d || !t || cb.length === 0) return alert("Configurez la date, l'heure et sélectionnez au moins un bateau.");
 
