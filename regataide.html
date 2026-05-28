@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Regataide - Arbitrage Tactile</title>
+  <style>
+    :root {
+      --primary: #1e3d59; --secondary: #17b978; --danger: #ff5e62; --warning: #ffb100;
+      --bg: #f5f7fa; --surface: #ffffff; --border-radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { background-color: var(--bg); color: #222831; padding-bottom: 50px; }
+    header { background-color: var(--primary); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+    .nav-tabs { display: flex; gap: 8px; }
+    .tab-btn { background: transparent; border: 2px solid transparent; color: white; padding: 8px 15px; border-radius: var(--border-radius); font-weight: bold; cursor: pointer; }
+    .tab-btn.active, .tab-btn:hover { background: rgba(255, 255, 255, 0.2); border-color: white; }
+    .tab-btn.highlight { background-color: var(--secondary); }
+    .content { max-width: 1200px; margin: 20px auto; padding: 0 15px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .split { display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; }
+    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+    .card { background: var(--surface); border-radius: var(--border-radius); padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .form-group { margin-bottom: 12px; }
+    .form-group.row { display: flex; gap: 15px; }
+    .form-group.row > div { flex: 1; }
+    label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 0.9rem; }
+    input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; }
+    .btn { display: inline-block; padding: 10px 18px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; text-align: center; font-size: 1rem; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-success { background: var(--secondary); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-warning { background: var(--warning); color: #222831; }
+    .btn-large { width: 100%; padding: 14px; font-size: 1.1rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-top: 15px; }
+    .boat-item { background: #fdfdfd; border: 1px solid #eee; border-radius: 8px; padding: 10px; text-align: center; position: relative; }
+    .boat-item img { width: 100%; height: 110px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; }
+    .btn-delete { position: absolute; top: 5px; right: 5px; background: rgba(255,94,98,0.9); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; font-weight: bold; cursor: pointer; z-index: 10; }
+    .btn-edit { position: absolute; top: 5px; left: 5px; background: rgba(30,61,89,0.9); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; font-weight: bold; cursor: pointer; z-index: 10; }
+    .selection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+    .sel-item { display: flex; align-items: center; gap: 10px; background: white; padding: 10px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }
+    .signal-card { background: #0f172a; color: white; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+    #countdown-timer { font-size: 3rem; font-weight: bold; color: #38bdf8; font-family: monospace; }
+    .flags-section { display: flex; flex-direction: column; gap: 8px; flex-grow: 1; margin: 0 20px; }
+    .ind { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.08); padding: 8px 12px; border-radius: 6px; }
+    .flag-icon { font-size: 1.8rem; }
+    .sorting-list { display: flex; flex-direction: column; gap: 10px; }
+    .sorting-item { display: flex; align-items: center; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: var(--border-radius); padding: 8px; cursor: grab; user-select: none; }
+    .sorting-item:active { cursor: grabbing; background: #f1f5f9; border-color: var(--primary); }
+    .item-img { width: 55px; height: 55px; object-fit: cover; border-radius: 6px; margin-right: 12px; pointer-events: none; }
+    .item-details { flex-grow: 1; pointer-events: none; }
+    .drag-handle { font-size: 1.5rem; color: #94a3b8; margin-right: 12px; user-select: none; pointer-events: none; }
+    .btns-group { display: flex; flex-direction: column; gap: 4px; }
+    .btn-lap { background: var(--warning); color: white; padding: 6px 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; }
+    .btn-arr { background: var(--secondary); color: white; padding: 8px 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; }
+    .finished-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; margin: 15px 0; }
+    .finished-item { display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; border-left: 5px solid var(--secondary); padding: 8px 12px; border-radius: 6px; }
+    .help-text { font-size: 0.8rem; color: #64748b; margin-bottom: 10px; }
+    .rating-calc { font-size: 0.85rem; color: #64748b; font-weight: bold; margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>⏱️ Regataide</h1>
+    <nav class="nav-tabs">
+      <button class="tab-btn active" onclick="switchTab('tab-participants')">👥 Participants</button>
+      <button class="tab-btn" onclick="switchTab('tab-config')">⚙️ Configuration</button>
+      <button class="tab-btn highlight" onclick="switchTab('tab-race')">⛵ Course en Direct</button>
+    </nav>
+  </header>
+
+  <main class="content">
+
+    <!-- ONGLET 1 : PARTICIPANTS -->
+    <section id="tab-participants" class="panel active">
+      <div class="split">
+        <div class="card">
+          <h2 id="form-title">Ajouter un Voilier</h2>
+          <form id="form-boat" onsubmit="saveBoat(event)">
+            <div class="form-group row">
+              <div><label>Nom du voilier :</label><input type="text" id="b-nom" required></div>
+              <div><label>N° de voile :</label><input type="text" id="b-voile" placeholder="Ex: FRA 445"></div>
+            </div>
+            <div class="form-group row">
+              <div><label>Modèle :</label><input type="text" id="b-modele" placeholder="Ex: Laser, J/80..."></div>
+              <div><label>Capitaine :</label><input type="text" id="b-cap" required></div>
+            </div>
+            <div class="form-group">
+              <label>Rating :</label>
+              <input type="number" id="b-rating" value="100" oninput="updateCalculatedHandicap()" required>
+              <div class="rating-calc" id="b-handicap-preview">Coefficient calculé (650/(550+Rating)) : 1.000</div>
+            </div>
+            <div class="form-group"><label>Photo du bateau :</label><input type="file" id="b-img" accept="image/*"></div>
+            <div style="display:flex; gap:10px;">
+              <button type="submit" id="btn-submit-boat" class="btn btn-success btn-large">Enregistrer le bateau</button>
+              <button type="button" id="btn-cancel-edit" class="btn btn-danger" style="display:none;" onclick="cancelEdit()">Annuler</button>
+            </div>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Flotte Enregistrée</h2>
+          <div id="participants-list" class="grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ONGLET 2 : CONFIGURATION -->
+    <section id="tab-config" class="panel">
+      <div class="card">
+        <h2>Nouvelle course</h2>
+        <div class="form-group row">
+          <div><label>Date :</label><input type="date" id="race-date" required></div>
+          <div><label>Départ théorique :</label><input type="time" id="race-time" step="1" required></div>
+        </div>
+        <h3 style="margin: 15px 0 10px 0;">Sélectionner les bateaux participants :</h3>
+        <div id="selection-boats-list" class="selection-grid"></div>
+        <button onclick="saveAndPrepareRace()" class="btn btn-primary btn-large" style="margin-top:20px;">Préparer cette course</button>
+      </div>
+    </section>
+
+    <!-- ONGLET 3 : COURSE -->
+    <section id="tab-race" class="panel">
+      <!-- PANEL DE DÉPART -->
+      <div class="card signal-card">
+        <div>
+          <div id="countdown-label" style="color: #94a3b8; font-size: 0.9rem; text-transform: uppercase;">Attente</div>
+          <div id="countdown-timer">-05:00</div>
+        </div>
+        <div class="flags-section">
+          <div class="ind"><span id="flag-display" class="flag-icon">⬜</span><span id="flag-text">Pas de procédure en cours</span></div>
+          <div class="ind"><span>🔊</span><span>Son Web Audio Bluetooth actif</span></div>
+        </div>
+        <div class="race-actions">
+          <button onclick="startCountdown()" class="btn btn-success">Lancer Procédure (-5 min)</button>
+          <button onclick="testSound()" class="btn btn-primary">🔊 Tester</button>
+          <button onclick="resetCountdown()" class="btn btn-danger">Reset</button>
+        </div>
+      </div>
+
+      <!-- INTERFACE ARBITRES TACTILE -->
+      <div class="split">
+        <div class="card">
+          <h2>⛵ En lice (Faites glisser pour réordonner)</h2>
+          <p class="help-text">💡 Maintenez et glissez un bateau pour le remonter rapidement dans la liste d'approche.</p>
+          <div id="racing-boats-list" class="sorting-list"></div>
+        </div>
+        <div class="card">
+          <h2>🏁 Classement Compensé Provisoire</h2>
+          <div id="finished-boats-list" class="finished-list"></div>
+          <button onclick="exportCSV()" class="btn btn-success btn-large">Télécharger le rapport .CSV</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // --- PERSISTANCE LOCALE SANS BDD ---
+    let participants = JSON.parse(localStorage.getItem('regataide_parts')) || [];
+    let activeRace = JSON.parse(localStorage.getItem('regataide_race')) || null;
+    let editingBoatId = null;
+    let countdownInterval = null;
+    let raceSecondsLeft = 300;
+    let audioCtx = null;
+    let draggedIdx = null; // Stockage de l'indice pour le drag and drop
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playBeep(durationMs = 200, freq = 880) {
+      initAudio();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      setTimeout(() => osc.stop(), durationMs);
+    }
+
+    function testSound() { playBeep(400, 880); }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tabId));
+      if (btn) btn.classList.add('active');
+    }
+
+    // --- FORMULE DE HANDICAP DYNAMIQUE ---
+    function calculateHandicap(rating) {
+      return 650 / (550 + parseFloat(rating));
+    }
+
+    function updateCalculatedHandicap() {
+      const rating = document.getElementById('b-rating').value;
+      const preview = document.getElementById('b-handicap-preview');
+      if (rating) {
+        const hc = calculateHandicap(rating);
+        preview.textContent = `Coefficient calculé (650/(550+Rating)) : ${hc.toFixed(3)}`;
+      } else {
+        preview.textContent = `Veuillez saisir un Rating`;
+      }
+    }
+
+    // --- ENREGISTREMENT OU MODIFICATION BATEAU ---
+    function saveBoat(e) {
+      e.preventDefault();
+      const nom = document.getElementById('b-nom').value;
+      const cap = document.getElementById('b-cap').value;
+      const rating = parseFloat(document.getElementById('b-rating').value) || 100;
+      const modele = document.getElementById('b-modele').value;
+      const voile = document.getElementById('b-voile').value;
+      const file = document.getElementById('b-img').files[0];
+      const handicap = calculateHandicap(rating);
+
+      const proceedSave = (imgUrl) => {
+        if (editingBoatId) {
+          // Mode modification
+          const index = participants.findIndex(p => p.id === editingBoatId);
+          if (index > -1) {
+            participants[index].nom = nom;
+            participants[index].capitaine = cap;
+            participants[index].rating = rating;
+            participants[index].handicap = handicap;
+            participants[index].modele = modele;
+            participants[index].voile = voile;
+            if (imgUrl) participants[index].photo = imgUrl; // On ne change l'image que si une nouvelle est fournie
+          }
+          
+          // Répercuter la modification dans la course active si ce bateau y participe
+          if (activeRace) {
+            const activeBoatIdx = activeRace.participants.findIndex(p => p.id === editingBoatId);
+            if (activeBoatIdx > -1) {
+              activeRace.participants[activeBoatIdx].nom = nom;
+              activeRace.participants[activeBoatIdx].capitaine = cap;
+              activeRace.participants[activeBoatIdx].rating = rating;
+              activeRace.participants[activeBoatIdx].handicap = handicap;
+              activeRace.participants[activeBoatIdx].modele = modele;
+              activeRace.participants[activeBoatIdx].voile = voile;
+              if (imgUrl) activeRace.participants[activeBoatIdx].photo = imgUrl;
+              localStorage.setItem('regataide_race', JSON.stringify(activeRace));
+            }
+          }
+
+          editingBoatId = null;
+          document.getElementById('form-title').textContent = "Ajouter un Voilier";
+          document.getElementById('btn-submit-boat').textContent = "Enregistrer le bateau";
+          document.getElementById('btn-cancel-edit').style.display = "none";
+        } else {
+          // Mode ajout
+          const finalImg = imgUrl || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%231e3d59"/><path d="M50,20 L30,65 L50,60 L70,65 Z" fill="%23fff"/></svg>';
+          participants.push({
+            id: 'b_' + Date.now(), nom, capitaine: cap, rating, handicap, modele, voile, photo: finalImg
+          });
+        }
+
+        localStorage.setItem('regataide_parts', JSON.stringify(participants));
+        document.getElementById('form-boat').reset();
+        updateCalculatedHandicap();
+        render();
+      };
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => proceedSave(reader.result);
+        reader.readAsDataURL(file);
+      } else {
+        proceedSave(null);
+      }
+    }
+
+    // --- ENTREE EN MODE EDITION ---
+    function editBoat(id) {
+      const boat = participants.find(p => p.id === id);
+      if (!boat) return;
+
+      editingBoatId = id;
+      document.getElementById('b-nom').value = boat.nom;
+      document.getElementById('b-cap').value = boat.capitaine;
+      document.getElementById('b-rating').value = boat.rating || 100;
+      document.getElementById('b-modele').value = boat.modele || '';
+      document.getElementById('b-voile').value = boat.voile || '';
+      
+      updateCalculatedHandicap();
+
+      document.getElementById('form-title').textContent = "Modifier un Voilier";
+      document.getElementById('btn-submit-boat').textContent = "Mettre à jour le bateau";
+      document.getElementById('btn-cancel-edit').style.display = "inline-block";
+      
+      switchTab('tab-participants');
+    }
+
+    function cancelEdit() {
+      editingBoatId = null;
+      document.getElementById('form-boat').reset();
+      updateCalculatedHandicap();
+      document.getElementById('form-title').textContent = "Ajouter un Voilier";
+      document.getElementById('btn-submit-boat').textContent = "Enregistrer le bateau";
+      document.getElementById('btn-cancel-edit').style.display = "none";
+    }
+
+    function deleteBoat(id) {
+      if (confirm("Supprimer définitivement ce voilier ?")) {
+        participants = participants.filter(p => p.id !== id);
+        localStorage.setItem('regataide_parts', JSON.stringify(participants));
+        render();
+      }
+    }
+
+    // --- GESTION DE LA COURSE ---
+    function saveAndPrepareRace() {
+      const d = document.getElementById('race-date').value;
+      const t = document.getElementById('race-time').value;
+      const cb = document.querySelectorAll('input[name="sel-boats"]:checked');
+      if (!d || !t || cb.length === 0) return alert("Configurez la date, l'heure et sélectionnez au moins un bateau.");
+
+      const selectedBoats = participants.filter(b => Array.from(cb).map(c => c.value).includes(b.id));
+      activeRace = { date: d, heureDepart: t, participants: selectedBoats, arrivals: [] };
+      localStorage.setItem('regataide_race', JSON.stringify(activeRace));
+      render();
+      switchTab('tab-race');
+    }
+
+    // --- COMPORTEMENT DRAG & DROP NATIF TACTILE ---
+    function handleDragStart(e, index) {
+      draggedIdx = index;
+      e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function handleDragOver(e) {
+      e.preventDefault();
+    }
+
+    function handleDrop(e, targetIdx) {
+      e.preventDefault();
+      if (draggedIdx === null || draggedIdx === targetIdx) return;
+      
+      const list = activeRace.participants;
+      const [draggedItem] = list.splice(draggedIdx, 1);
+      list.splice(targetIdx, 0, draggedItem);
+      
+      localStorage.setItem('regataide_race', JSON.stringify(activeRace));
+      draggedIdx = null;
+      render();
+    }
+
+    // --- RENDER DE L'APPLICATION ---
+    function render() {
+      // 1. Liste globale des participants (👥)
+      const listDiv = document.getElementById('participants-list');
+      listDiv.innerHTML = participants.map(b => `
+        <div class="boat-item">
+          <button class="btn-delete" title="Supprimer" onclick="deleteBoat('${b.id}')">×</button>
+          <button class="btn-edit" title="Modifier" onclick="editBoat('${b.id}')">✎</button>
+          <img src="${b.photo}">
+          <h4>${b.nom}</h4>
+          <p style="font-size:0.8rem; color:#64748b;">N° Voile: ${b.voile || 'Aucun'}</p>
+          <p style="font-size:0.8rem; color:#64748b;">Modèle: ${b.modele || 'Inconnu'}</p>
+          <p style="font-size:0.8rem; font-weight:bold; margin-top:2px;">Rating: ${b.rating || 100}</p>
+          <p style="font-size:0.75rem; color:var(--primary);">Handicap : ${b.handicap.toFixed(3)}</p>
+        </div>
+      `).join('');
+
+      // 2. Grille de sélection pour la course (⚙️)
+      const selDiv = document.getElementById('selection-boats-list');
+      selDiv.innerHTML = participants.map(b => `
+        <label class="sel-item">
+          <input type="checkbox" name="sel-boats" value="${b.id}">
+          <span><strong>${b.nom}</strong> (${b.modele || 'N/A'} - ${b.voile || 'Sans N°'})</span>
+        </label>
+      `).join('');
+
+      if (!activeRace) return;
+
+      // 3. Liste active des bateaux en course (En lice - Glisser-Déposer)
+      const racingBoats = activeRace.participants.filter(b => {
+        const arr = activeRace.arrivals.find(a => a.boatId === b.id);
+        return !arr || !arr.finished;
+      });
+
+      const containerRacing = document.getElementById('racing-boats-list');
+      containerRacing.innerHTML = racingBoats.map((b, idx) => {
+        const arr = activeRace.arrivals.find(a => a.boatId === b.id);
+        const laps = arr ? arr.laps.length : 0;
+        return `
+          <div class="sorting-item" 
+               draggable="true" 
+               ondragstart="handleDragStart(event, ${idx})" 
+               ondragover="handleDragOver(event)" 
+               ondrop="handleDrop(event, ${idx})"
+               id="row-${b.id}">
+            <span class="drag-handle">☰</span>
+            <img src="${b.photo}" class="item-img">
+            <div class="item-details">
+              <h4>${b.nom} <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${b.voile || 'N/A'})</span></h4>
+              <p style="font-size:0.8rem; color:#64748b;">${b.modele || 'N/A'} | Rating : ${b.rating || 100}</p>
+              <p>Tours : <strong style="color:var(--warning)">${laps}</strong></p>
+            </div>
+            <div class="btns-group">
+              <button class="btn-lap" id="btn-lap-${b.id}" onclick="handlePassingClick('${b.id}', false)">Passage</button>
+              <button class="btn-arr" id="btn-arr-${b.id}" onclick="handlePassingClick('${b.id}', true)">ARRIVÉE (Double)</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // 4. Liste des arrivés avec calcul compensé (Option A)
+      const baseTime = new Date(`${activeRace.date}T${activeRace.heureDepart}`).getTime();
+      const finishedArrivals = activeRace.arrivals.filter(a => a.finished).map(arr => {
+        const boat = activeRace.participants.find(p => p.id === arr.boatId);
+        const finalTime = new Date(arr.laps[arr.laps.length - 1]).getTime();
+        const realSec = Math.max(0, Math.round((finalTime - baseTime) / 1000));
+        return { boat, realSec, compSec: Math.round(realSec * boat.handicap), laps: arr.laps.length };
+      });
+
+      finishedArrivals.sort((a, b) => a.compSec - b.compSec);
+
+      const containerFinished = document.getElementById('finished-boats-list');
+      containerFinished.innerHTML = finishedArrivals.map((arr, idx) => `
+        <div class="finished-item">
+          <div>
+            <strong>#${idx + 1} - ${arr.boat.nom}</strong> (${arr.boat.voile || 'N/A'})<br>
+            <small>Réel : ${formatSec(arr.realSec)} (Rating : ${arr.boat.rating || 100})</small>
+          </div>
+          <div style="text-align: right;">
+            <strong style="color: var(--secondary)">${formatSec(arr.compSec)}</strong><br>
+            <small>Compensé</small>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // --- ENREGISTREMENT DES TEMPS (DOUBLE CLIC DE SÉCURITÉ) ---
+    let lastTime = 0, lastId = null, lastFinal = false;
+
+    function handlePassingClick(boatId, isFinal) {
+      const now = Date.now();
+      const btn = document.getElementById(isFinal ? `btn-arr-${boatId}` : `btn-lap-${boatId}`);
+
+      if (lastId === boatId && lastFinal === isFinal && (now - lastTime < 1500)) {
+        lastId = null;
+        btn.textContent = isFinal ? "ARRIVÉE (Double)" : "Passage";
+        btn.style.backgroundColor = "";
+        registerPassage(boatId, isFinal);
+      } else {
+        lastId = boatId; lastFinal = isFinal; lastTime = now;
+        btn.textContent = "VALIDER ?"; btn.style.backgroundColor = "var(--danger)";
+        setTimeout(() => {
+          if (lastId === boatId && lastFinal === isFinal) {
+            lastId = null;
+            btn.textContent = isFinal ? "ARRIVÉE (Double)" : "Passage";
+            btn.style.backgroundColor = "";
+          }
+        }, 1500);
+      }
+    }
+
+    function registerPassage(boatId, isFinal) {
+      if (!activeRace) return;
+      const ts = new Date().toISOString();
+      let arr = activeRace.arrivals.find(a => a.boatId === boatId);
+
+      if (!arr) {
+        arr = { boatId, laps: [ts], finished: isFinal };
+        activeRace.arrivals.push(arr);
+      } else if (!arr.finished) {
+        arr.laps.push(ts);
+        if (isFinal) arr.finished = true;
+      }
+      localStorage.setItem('regataide_race', JSON.stringify(activeRace));
+      render();
+    }
+
+    // --- CHRONOMETRE ET PAVILLONS DE DEPART ISAF ---
+    function startCountdown() {
+      initAudio();
+      if (countdownInterval) clearInterval(countdownInterval);
+      raceSecondsLeft = 300;
+      updateSignals();
+      playBeep(400, 880);
+
+      countdownInterval = setInterval(() => {
+        raceSecondsLeft--;
+        if (raceSecondsLeft <= 0) {
+          clearInterval(countdownInterval);
+          raceSecondsLeft = 0;
+          handleRaceStarted();
+        } else {
+          updateSignals();
+        }
+      }, 1000);
+    }
+
+    function resetCountdown() {
+      clearInterval(countdownInterval);
+      raceSecondsLeft = 300;
+      document.getElementById('countdown-timer').textContent = "-05:00";
+      document.getElementById('countdown-label').textContent = "Attente";
+      document.getElementById('flag-display').textContent = "⬜";
+      document.getElementById('flag-text').textContent = "Pas de procédure";
+    }
+
+    function handleRaceStarted() {
+      document.getElementById('countdown-timer').textContent = "00:00";
+      document.getElementById('countdown-label').textContent = "COURSE EN COURS !";
+      document.getElementById('flag-display').textContent = "🏁";
+      document.getElementById('flag-text').textContent = "Départ validé ! Affaler le pavillon.";
+      playBeep(800, 600);
+    }
+
+    function updateSignals() {
+      const m = Math.floor(Math.abs(raceSecondsLeft) / 60).toString().padStart(2, '0');
+      const s = (Math.abs(raceSecondsLeft) % 60).toString().padStart(2, '0');
+      document.getElementById('countdown-timer').textContent = `-${m}:${s}`;
+      const f = document.getElementById('flag-display');
+      const t = document.getElementById('flag-text');
+
+      if (raceSecondsLeft > 240 && raceSecondsLeft <= 300) {
+        document.getElementById('countdown-label').textContent = "Avertissement"; f.textContent = "🚩";
+        t.textContent = "Lever pavillon de classe [1 bip sonore]";
+        if (raceSecondsLeft === 300) playBeep(250, 880);
+      } else if (raceSecondsLeft > 60 && raceSecondsLeft <= 240) {
+        document.getElementById('countdown-label').textContent = "Préparatoire"; f.textContent = "🟦";
+        t.textContent = "Lever pavillon Préparatoire (P) [1 bip sonore]";
+        if (raceSecondsLeft === 240) playBeep(250, 880);
+      } else if (raceSecondsLeft > 0 && raceSecondsLeft <= 60) {
+        document.getElementById('countdown-label').textContent = "Dernière Minute !"; f.textContent = "🏳️";
+        t.textContent = "Affaler pavillon Préparatoire [1 bip sonore LONG]";
+        if (raceSecondsLeft === 60) playBeep(700, 440);
+      }
+    }
+
+    // --- TELECHARGEMENT DIRECT DU CSV ---
+    function exportCSV() {
+      if (!activeRace) return alert("Aucune course à exporter.");
+      const baseTime = new Date(`${activeRace.date}T${activeRace.heureDepart}`).getTime();
+      
+      let csv = "\uFEFFPosition;Nom;Voile;Modele;Capitaine;Rating;Handicap;Tours;Statut;Temps Reel;Temps Corrige;Chronologie des passages\n";
+      
+      const results = activeRace.participants.map(boat => {
+        const arr = activeRace.arrivals.find(a => a.boatId === boat.id);
+        let laps = 0, realSec = null, compSec = null, details = [];
+        if (arr) {
+          laps = arr.laps.length;
+          arr.laps.forEach((ts, idx) => {
+            details.push(`Tour ${idx+1}: ${formatSec(Math.round((new Date(ts).getTime() - baseTime)/1000))}`);
+          });
+          if (arr.finished && laps > 0) {
+            realSec = Math.max(0, Math.round((new Date(arr.laps[arr.laps.length - 1]).getTime() - baseTime)/1000));
+            compSec = Math.round(realSec * boat.handicap);
+          }
+        }
+        return { boat, laps, realSec, compSec, finished: arr?.finished, details: details.join(" | ") };
+      });
+
+      results.sort((a, b) => (a.compSec || Infinity) - (b.compSec || Infinity));
+
+      results.forEach((r, idx) => {
+        const pos = r.compSec ? idx + 1 : "DNF";
+        const realStr = r.realSec ? formatSec(r.realSec) : "N/A";
+        const compStr = r.compSec ? formatSec(r.compSec) : "N/A";
+        csv += `${pos};"${r.boat.nom}";"${r.boat.voile || ''}";"${r.boat.modele || ''}";"${r.boat.capitaine}";${r.boat.rating};${r.boat.handicap.toFixed(4)};${r.laps};${r.finished ? "ARRIVE" : "DNF"};${realStr};${compStr};"${r.details}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `resultats_course_${Date.now()}.csv`;
+      link.click();
+    }
+
+    function formatSec(sec) {
+      const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+      const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+      const s = Math.round(sec % 60).toString().padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    // Initialisation
+    render();
+  </script>
+</body>
+</html>
