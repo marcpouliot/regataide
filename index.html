@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Regataide - Arbitrage Tactile</title>
+  <title>Regataide - Arbitrage Tactile (Version Locale)</title>
   <style>
     :root {
       --primary: #1e3d59; --secondary: #17b978; --danger: #ff5e62; --warning: #ffb100;
@@ -58,7 +58,7 @@
     .finished-item { display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; border-left: 5px solid var(--secondary); padding: 8px 12px; border-radius: 6px; }
     .help-text { font-size: 0.8rem; color: #64748b; margin-bottom: 10px; }
     .rating-calc { font-size: 0.85rem; color: #64748b; font-weight: bold; margin-top: 4px; }
-    .sync-section { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .report-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
   </style>
 </head>
 <body>
@@ -74,11 +74,11 @@
 
   <main class="content">
 
-    <!-- ONGLET 1 : PARTICIPANTS -->
+    <!-- ONGLET 1 : PARTICIPANTS (SAUVEGARDE LOCALE UNIQUEMENT) -->
     <section id="tab-participants" class="panel active">
-      <!-- ZONE D'IMPORT / EXPORT LOCAL (SOLUTION 1) -->
+      <!-- IMPORT / EXPORT LOCAL DE LA FLOTTE -->
       <div class="card" style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <h3>💾 Sauvegarde de la Flotte (Fichier Local)</h3>
+        <h3>💾 Partage de la Flotte (Fichier Local JSON)</h3>
         <div style="display: flex; gap: 10px; align-items: center;">
           <button onclick="exportLocalFleet()" class="btn btn-primary">📤 Exporter la flotte</button>
           <label class="btn btn-warning" style="margin:0; cursor:pointer;">
@@ -121,18 +121,6 @@
 
     <!-- ONGLET 2 : CONFIGURATION -->
     <section id="tab-config" class="panel">
-      <!-- SYNC CLOUD (SOLUTION 2) -->
-      <div class="card">
-        <h2>☁️ Synchronisation Cloud (Via Google Sheets)</h2>
-        <p class="help-text">Renseignez l'URL de votre application Web Google Apps Script et votre mot de passe pour synchroniser la flotte et la course en direct entre vos appareils [1].</p>
-        <div class="form-group"><label>URL de l'application Web Google :</label><input type="text" id="sync-url" placeholder="https://script.google.com/macros/s/.../exec"></div>
-        <div class="form-group"><label>Mot de passe de sécurité :</label><input type="password" id="sync-pass" placeholder="Entrez le mot de passe défini dans votre script"></div>
-        <div class="sync-section">
-          <button onclick="cloudPush()" class="btn btn-success">📤 Sauvegarder sur le Cloud</button>
-          <button onclick="cloudPull()" class="btn btn-primary">📥 Récupérer du Cloud</button>
-        </div>
-      </div>
-
       <div class="card">
         <h2>Nouvelle course</h2>
         <div class="form-group row">
@@ -145,9 +133,9 @@
       </div>
     </section>
 
-    <!-- ONGLET 3 : COURSE -->
+    <!-- ONGLET 3 : COURSE EN DIRECT -->
     <section id="tab-race" class="panel">
-      <!-- PANEL DE DÉPART -->
+      <!-- PANEL DE DÉPART (ISAF 5 MIN) -->
       <div class="card signal-card">
         <div>
           <div id="countdown-label" style="color: #94a3b8; font-size: 0.9rem; text-transform: uppercase;">Attente</div>
@@ -155,26 +143,28 @@
         </div>
         <div class="flags-section">
           <div class="ind"><span id="flag-display" class="flag-icon">⬜</span><span id="flag-text">Pas de procédure en cours</span></div>
-          <div class="ind"><span>🔊</span><span>Son Web Audio Bluetooth actif</span></div>
+          <div class="ind"><span>🔊</span><span>Son Web Audio actif</span></div>
         </div>
         <div class="race-actions">
           <button onclick="startCountdown()" class="btn btn-success">Lancer Procédure (-5 min)</button>
-          <button onclick="testSound()" class="btn btn-primary">🔊 Tester</button>
+          <button onclick="testSound()" class="btn btn-primary">🔊 Tester le Son</button>
           <button onclick="resetCountdown()" class="btn btn-danger">Reset</button>
         </div>
       </div>
 
-      <!-- INTERFACE ARBITRES TACTILE -->
       <div class="split">
         <div class="card">
           <h2>⛵ En lice (Faites glisser pour réordonner)</h2>
-          <p class="help-text">💡 Maintenez et glissez un bateau pour le remonter rapidement dans la liste d'approche.</p>
+          <p class="help-text">💡 Glissez un bateau pour le remonter rapidement dans la liste d'approche.</p>
           <div id="racing-boats-list" class="sorting-list"></div>
         </div>
         <div class="card">
           <h2>🏁 Classement Compensé Provisoire</h2>
           <div id="finished-boats-list" class="finished-list"></div>
-          <button onclick="exportCSV()" class="btn btn-success btn-large">Télécharger le rapport .CSV</button>
+          <div class="report-actions">
+            <button onclick="exportCSV()" class="btn btn-success btn-large">Télécharger .CSV</button>
+            <button onclick="sendEmail()" class="btn btn-primary btn-large">✉️ Envoyer par E-mail</button>
+          </div>
         </div>
       </div>
     </section>
@@ -182,7 +172,7 @@
   </main>
 
   <script>
-    // --- PERSISTANCE LOCALE SANS BDD ---
+    // --- PERSISTANCE LOCALE DE L'APPLICATION ---
     let participants = JSON.parse(localStorage.getItem('regataide_parts')) || [];
     let activeRace = JSON.parse(localStorage.getItem('regataide_race')) || null;
     let editingBoatId = null;
@@ -190,12 +180,6 @@
     let raceSecondsLeft = 300;
     let audioCtx = null;
     let draggedIdx = null;
-
-    // Charger les réglages Cloud stockés
-    document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("sync-url").value = localStorage.getItem("regataide_sync_url") || "";
-      document.getElementById("sync-pass").value = localStorage.getItem("regataide_sync_pass") || "";
-    });
 
     function initAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -335,7 +319,7 @@
       }
     }
 
-    // --- SOLUTION 1 : IMPORT / EXPORT LOCAL (JSON) ---
+    // --- SOLUTION 1 : IMPORT / EXPORT DE FLOTTE (JSON LOCAL) ---
     function exportLocalFleet() {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(participants));
       const downloadAnchor = document.createElement('a');
@@ -364,67 +348,6 @@
         } catch (err) { alert("Erreur lors de la lecture du fichier."); }
       };
       reader.readAsText(file);
-    }
-
-// --- SOLUTION 2 : SYNCHRONISATION CLOUD SECURISEE (AMELIOREE) ---
-    async function cloudPush() {
-      const url = document.getElementById("sync-url").value;
-      const pass = document.getElementById("sync-pass").value;
-      if (!url || !pass) return alert("Veuillez renseigner l'URL et le mot de passe cloud.");
-
-      localStorage.setItem("regataide_sync_url", url);
-      localStorage.setItem("regataide_sync_pass", pass);
-
-      const packet = {
-        password: pass,
-        data: { participants, activeRace }
-      };
-
-      try {
-        // Envoi en "text/plain" pour contourner le blocage sans masquer les erreurs !
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify(packet)
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === "success") {
-          alert("✅ Sauvegarde Cloud réussie ! Vos 6 bateaux ont été envoyés.");
-        } else {
-          alert("❌ Erreur Google Sheets : " + result.message);
-        }
-      } catch (err) {
-        alert("❌ Erreur de connexion au Cloud : " + err.toString());
-      }
-    }
-
-    async function cloudPull() {
-      const url = document.getElementById("sync-url").value;
-      if (!url) return alert("Veuillez renseigner l'URL cloud.");
-      
-      localStorage.setItem("regataide_sync_url", url);
-
-      try {
-        const response = await fetch(url);
-        const cloudData = await response.json();
-        
-        if (cloudData.participants) {
-          if (confirm(`Données cloud trouvées. Importer la flotte (${cloudData.participants.length} bateaux) ?`)) {
-            participants = cloudData.participants;
-            activeRace = cloudData.activeRace;
-            localStorage.setItem('regataide_parts', JSON.stringify(participants));
-            localStorage.setItem('regataide_race', JSON.stringify(activeRace));
-            render();
-            alert("📥 Synchronisation Cloud terminée !");
-          }
-        } else {
-          alert("Aucune donnée de bateau trouvée sur votre Google Sheet.");
-        }
-      } catch (err) {
-        alert("❌ Erreur lors de la récupération : " + err.toString());
-      }
     }
 
     // --- PREPARATION COURSE ---
@@ -460,7 +383,7 @@
       render();
     }
 
-    // --- RENDER ---
+    // --- RENDER DE L'INTERFACE ---
     function render() {
       const listDiv = document.getElementById('participants-list');
       listDiv.innerHTML = participants.map(b => `
@@ -542,7 +465,7 @@
       `).join('');
     }
 
-    // --- CLICS ARRIVEES ---
+    // --- ENREGISTREMENT DES PASSAGES ET ARRIVEES ---
     let lastTime = 0, lastId = null, lastFinal = false;
 
     function handlePassingClick(boatId, isFinal) {
@@ -583,7 +506,7 @@
       render();
     }
 
-    // --- DEPART ---
+    // --- COMPTEUR DE DEPART ISAF ---
     function startCountdown() {
       initAudio();
       if (countdownInterval) clearInterval(countdownInterval);
@@ -641,9 +564,9 @@
       }
     }
 
-    // --- EXPORT CSV ---
-    function exportCSV() {
-      if (!activeRace) return alert("Aucune course à exporter.");
+    // --- GENERATION DU CSV ---
+    function generateCSVString() {
+      if (!activeRace) return "";
       const baseTime = new Date(`${activeRace.date}T${activeRace.heureDepart}`).getTime();
       
       let csv = "\uFEFFPosition;Nom;Voile;Modele;Capitaine;Rating;Handicap;Tours;Statut;Temps Reel;Temps Corrige;Chronologie des passages\n";
@@ -673,11 +596,49 @@
         csv += `${pos};"${r.boat.nom}";"${r.boat.voile || ''}";"${r.boat.modele || ''}";"${r.boat.capitaine}";${r.boat.rating};${r.boat.handicap.toFixed(4)};${r.laps};${r.finished ? "ARRIVE" : "DNF"};${realStr};${compStr};"${r.details}"\n`;
       });
 
+      return csv;
+    }
+
+    function exportCSV() {
+      const csv = generateCSVString();
+      if (!csv) return alert("Aucune course à exporter.");
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download = `resultats_course_${Date.now()}.csv`;
       link.click();
+    }
+
+    // --- ENVOI DES RESULTATS PAR EMAIL ---
+    function sendEmail() {
+      if (!activeRace) return alert("Aucune course active.");
+      const baseTime = new Date(`${activeRace.date}T${activeRace.heureDepart}`).getTime();
+      
+      const finishedArrivals = activeRace.arrivals.filter(a => a.finished).map(arr => {
+        const boat = activeRace.participants.find(p => p.id === arr.boatId);
+        const finalTime = new Date(arr.laps[arr.laps.length - 1]).getTime();
+        const realSec = Math.max(0, Math.round((finalTime - baseTime) / 1000));
+        return { boat, realSec, compSec: Math.round(realSec * boat.handicap), laps: arr.laps.length };
+      });
+      
+      finishedArrivals.sort((a, b) => a.compSec - b.compSec);
+
+      let mailBody = `Résultats de la Régate du ${activeRace.date} (Départ : ${activeRace.heureDepart})\n`;
+      mailBody += `==================================================\n`;
+      mailBody += `Pos | Voilier (N°) | Modèle | Skipper | Rating | Réel | Compensé\n`;
+      mailBody += `--------------------------------------------------\n`;
+      
+      finishedArrivals.forEach((arr, idx) => {
+        mailBody += `${idx + 1} | ${arr.boat.nom} (${arr.boat.voile || 'Sans'}) | ${arr.boat.modele || 'N/A'} | ${arr.boat.capitaine} | ${arr.boat.rating} | ${formatSec(arr.realSec)} | ${formatSec(arr.compSec)}\n`;
+      });
+      
+      mailBody += `==================================================\n\n`;
+      mailBody += `--- DONNÉES FORMAT CSV ---\n`;
+      mailBody += generateCSVString().replace(/\uFEFF/, ""); // On colle aussi le CSV en texte brut pour que l'arbitre puisse le copier/coller dans Excel
+
+      const subject = encodeURIComponent(`Résultats Régate - ${activeRace.date}`);
+      const body = encodeURIComponent(mailBody);
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
     }
 
     function formatSec(sec) {
