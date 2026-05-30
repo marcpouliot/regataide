@@ -75,7 +75,6 @@
 
   <main class="content">
 
-    <!-- ONGLET 1 : PARTICIPANTS -->
     <section id="tab-participants" class="panel active">
       <div class="card" style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <h3>💾 Partage de la Flotte (Fichier Local JSON)</h3>
@@ -119,7 +118,6 @@
       </div>
     </section>
 
-    <!-- ONGLET 2 : CONFIGURATION -->
     <section id="tab-config" class="panel">
       <div class="card">
         <h2>Nouvelle course</h2>
@@ -133,15 +131,12 @@
       </div>
     </section>
 
-    <!-- ONGLET 3 : COURSE EN DIRECT -->
     <section id="tab-race" class="panel">
-      <!-- PANEL DE DÉPART AUTOMATIQUE -->
       <div class="card signal-card">
         <div>
           <div id="countdown-label" style="color: #94a3b8; font-size: 0.9rem; text-transform: uppercase;">Attente de course</div>
           <div id="countdown-timer">--:--</div>
           <div id="planned-time-display" class="planned-info">Aucune heure configurée</div>
-          <!-- AFFICHAGE DE L'HEURE RÉELLE ACTUELLE -->
           <div id="current-time-display" style="font-size: 0.85rem; color: var(--secondary); margin-top: 4px; font-weight: bold;">Heure réelle : --:--:--</div>
         </div>
         <div class="flags-section">
@@ -174,38 +169,24 @@
   </main>
 
   <script>
-    // --- PERSISTANCE LOCALE DE L'APPLICATION ---
     let participants = JSON.parse(localStorage.getItem('regataide_parts')) || [];
     let activeRace = JSON.parse(localStorage.getItem('regataide_race')) || null;
-    let editingBoatId = null;
-    let countdownInterval = null;
-    let audioCtx = null;
-    let draggedIdx = null;
-
-    // Signaux de procédure de départ (gérés automatiquement)
+    if (activeRace && !activeRace.arrivals) activeRace.arrivals = []; // Sécurité démarrage
+    
+    let editingBoatId = null, countdownInterval = null, audioCtx = null, draggedIdx = null;
     let beep5Played = false, beep4Played = false, beep1Played = false, beep0Played = false;
 
-    // --- DECODEUR DE DATE UNIVERSEL SÉCURISÉ NUMÉRIQUE (SAFARI / CHROME) ---
     function parseLocalPlannedTime(dateStr, timeStr) {
       if (!dateStr || !timeStr) return null;
       const formattedDate = dateStr.replace(/-/g, '/');
       const normalizedTime = normalizeTo24h(timeStr);
       const timeParts = normalizedTime.split(':');
-      
       const dateParts = formattedDate.split('/');
       if (dateParts.length !== 3 || timeParts.length < 2) return null;
       
-      let year, month, day;
-      if (dateParts[0].length === 4) {
-        year = parseInt(dateParts[0], 10);
-        month = parseInt(dateParts[1], 10) - 1; // Janvier est 0
-        day = parseInt(dateParts[2], 10);
-      } else {
-        day = parseInt(dateParts[0], 10);
-        month = parseInt(dateParts[1], 10) - 1;
-        year = parseInt(dateParts[2], 10);
-      }
-      
+      const year = parseInt(dateParts[0], 10);
+      const month = parseInt(dateParts[1], 10) - 1;
+      const day = parseInt(dateParts[2], 10);
       const hours = parseInt(timeParts[0], 10);
       const minutes = parseInt(timeParts[1], 10);
       const seconds = parseInt(timeParts[2], 10) || 0;
@@ -214,78 +195,38 @@
       return isNaN(parsed.getTime()) ? null : parsed.getTime();
     }
 
-    // --- NORMALISATEUR D'HEURE UNIVERSEL (ANTI-BUG AM/PM) ---
     function normalizeTo24h(timeStr) {
       if (!timeStr) return "00:00:00";
       let t = timeStr.trim().toUpperCase();
-      
-      const isPM = t.includes("PM");
-      const isAM = t.includes("AM");
-      
+      const isPM = t.includes("PM"), isAM = t.includes("AM");
       t = t.replace("AM", "").replace("PM", "").trim();
-      
       const parts = t.split(':');
-      let hours = parseInt(parts[0], 10);
-      let minutes = parseInt(parts[1], 10) || 0;
-      let seconds = parseInt(parts[2], 10) || 0;
-      
+      let hours = parseInt(parts[0], 10), minutes = parseInt(parts[1], 10) || 0, seconds = parseInt(parts[2], 10) || 0;
       if (isPM && hours < 12) hours += 12;
       if (isAM && hours === 12) hours = 0;
-      
-      const hStr = hours.toString().padStart(2, '0');
-      const mStr = minutes.toString().padStart(2, '0');
-      const sStr = seconds.toString().padStart(2, '0');
-      
-      return `${hStr}:${mStr}:${sStr}`;
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     }
 
     function initAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
 
-    // --- SYNTHÉTISEUR DE CORNE DE BRUME PHYSIQUE (AIR HORN) ---
     function playFoghorn(durationMs = 800) {
       initAudio();
       if (audioCtx.state === 'suspended') audioCtx.resume();
-
-      const now = audioCtx.currentTime;
-      const durationSec = durationMs / 1000;
-
-      // Création de 2 oscillateurs légèrement désaccordés pour l'effet de battement lourd (growl)
-      const osc1 = audioCtx.createOscillator();
-      const osc2 = audioCtx.createOscillator();
-      
-      // Fréquences graves caractéristiques des avertisseurs de brume
-      osc1.frequency.setValueAtTime(143, now); 
-      osc2.frequency.setValueAtTime(145.5, now); 
-
-      osc1.type = 'sawtooth';
-      osc2.type = 'sawtooth';
-
-      // Filtre passe-bas pour lisser le son et donner du corps résonant
+      const now = audioCtx.currentTime, durationSec = durationMs / 1000;
+      const osc1 = audioCtx.createOscillator(), osc2 = audioCtx.createOscillator();
+      osc1.frequency.setValueAtTime(143, now); osc2.frequency.setValueAtTime(145.5, now);
+      osc1.type = 'sawtooth'; osc2.type = 'sawtooth';
       const filter = audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(450, now); 
-      filter.Q.setValueAtTime(3, now); // Résonance cuivrée
-
-      // Enveloppe de gain réaliste (Pression d'air)
+      filter.type = 'lowpass'; filter.frequency.setValueAtTime(450, now); filter.Q.setValueAtTime(3, now);
       const gainNode = audioCtx.createGain();
       gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(0.7, now + 0.05); // Montée de pression (50ms)
-      gainNode.gain.setValueAtTime(0.7, now + durationSec - 0.15); // Stabilité
-      gainNode.gain.exponentialRampToValueAtTime(0.001, now + durationSec); // Fin d'impulsion d'air
-
-      // Connexions
-      osc1.connect(filter);
-      osc2.connect(filter);
-      filter.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-
-      osc1.start(now);
-      osc2.start(now);
-      
-      osc1.stop(now + durationSec);
-      osc2.stop(now + durationSec);
+      gainNode.gain.linearRampToValueAtTime(0.7, now + 0.05);
+      gainNode.gain.setValueAtTime(0.7, now + durationSec - 0.15);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + durationSec);
+      osc1.connect(filter); osc2.connect(filter); filter.connect(gainNode); gainNode.connect(audioCtx.destination);
+      osc1.start(now); osc2.start(now); osc1.stop(now + durationSec); osc2.stop(now + durationSec);
     }
 
     function testSound() { playFoghorn(600); }
@@ -298,103 +239,63 @@
       if (btn) btn.classList.add('active');
     }
 
-    // --- FORMULE DE HANDICAP DYNAMIQUE ---
-    function calculateHandicap(rating) {
-      return 650 / (550 + parseFloat(rating));
-    }
+    function calculateHandicap(rating) { return 650 / (550 + parseFloat(rating)); }
 
     function updateCalculatedHandicap() {
       const rating = document.getElementById('b-rating').value;
       const preview = document.getElementById('b-handicap-preview');
-      if (rating) {
-        const hc = calculateHandicap(rating);
-        preview.textContent = `Coefficient calculé (650/(550+Rating)) : ${hc.toFixed(3)}`;
-      } else {
-        preview.textContent = `Veuillez saisir un Rating`;
-      }
+      if (rating) preview.textContent = `Coefficient calculé (650/(550+Rating)) : ${calculateHandicap(rating).toFixed(3)}`;
+      else preview.textContent = `Veuillez saisir un Rating`;
     }
 
-    // --- ENREGISTREMENT OU MODIFICATION BATEAU ---
     function saveBoat(e) {
       e.preventDefault();
-      const nom = document.getElementById('b-nom').value;
-      const cap = document.getElementById('b-cap').value;
-      const rating = parseFloat(document.getElementById('b-rating').value) || 100;
-      const modele = document.getElementById('b-modele').value;
-      const voile = document.getElementById('b-voile').value;
-      const file = document.getElementById('b-img').files[0];
-      const handicap = calculateHandicap(rating);
-
+      const nom = document.getElementById('b-nom').value, cap = document.getElementById('b-cap').value, rating = parseFloat(document.getElementById('b-rating').value) || 100;
+      const modele = document.getElementById('b-modele').value, voile = document.getElementById('b-voile').value, file = document.getElementById('b-img').files[0], handicap = calculateHandicap(rating);
       const proceedSave = (imgUrl) => {
         if (editingBoatId) {
           const index = participants.findIndex(p => p.id === editingBoatId);
           if (index > -1) {
-            participants[index].nom = nom;
-            participants[index].capitaine = cap;
-            participants[index].rating = rating;
-            participants[index].handicap = handicap;
-            participants[index].modele = modele;
-            participants[index].voile = voile;
+            participants[index].nom = nom; participants[index].capitaine = cap; participants[index].rating = rating;
+            participants[index].handicap = handicap; participants[index].modele = modele; participants[index].voile = voile;
             if (imgUrl) participants[index].photo = imgUrl;
           }
           if (activeRace) {
             const activeBoatIdx = activeRace.participants.findIndex(p => p.id === editingBoatId);
             if (activeBoatIdx > -1) {
-              activeRace.participants[activeBoatIdx].nom = nom;
-              activeRace.participants[activeBoatIdx].capitaine = cap;
-              activeRace.participants[activeBoatIdx].rating = rating;
-              activeRace.participants[activeBoatIdx].handicap = handicap;
-              activeRace.participants[activeBoatIdx].modele = modele;
-              activeRace.participants[activeBoatIdx].voile = voile;
+              activeRace.participants[activeBoatIdx].nom = nom; activeRace.participants[activeBoatIdx].capitaine = cap;
+              activeRace.participants[activeBoatIdx].rating = rating; activeRace.participants[activeBoatIdx].handicap = handicap;
+              activeRace.participants[activeBoatIdx].modele = modele; activeRace.participants[activeBoatIdx].voile = voile;
               if (imgUrl) activeRace.participants[activeBoatIdx].photo = imgUrl;
               localStorage.setItem('regataide_race', JSON.stringify(activeRace));
             }
           }
-          editingBoatId = null;
-          document.getElementById('form-title').textContent = "Ajouter un Voilier";
+          editingBoatId = null; document.getElementById('form-title').textContent = "Ajouter un Voilier";
           document.getElementById('btn-submit-boat').textContent = "Enregistrer le bateau";
           document.getElementById('btn-cancel-edit').style.display = "none";
         } else {
           const finalImg = imgUrl || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%231e3d59"/><path d="M50,20 L30,65 L50,60 L70,65 Z" fill="%23fff"/></svg>';
-          participants.push({
-            id: 'b_' + Date.now(), nom, capitaine: cap, rating, handicap, modele, voile, photo: finalImg
-          });
+          participants.push({ id: 'b_' + Date.now(), nom, capitaine: cap, rating, handicap, modele, voile, photo: finalImg });
         }
         localStorage.setItem('regataide_parts', JSON.stringify(participants));
-        document.getElementById('form-boat').reset();
-        updateCalculatedHandicap();
-        render();
+        document.getElementById('form-boat').reset(); updateCalculatedHandicap(); render();
       };
-
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = () => proceedSave(reader.result);
-        reader.readAsDataURL(file);
-      } else {
-        proceedSave(null);
-      }
+      if (file) { const reader = new FileReader(); reader.onload = () => proceedSave(reader.result); reader.readAsDataURL(file); }
+      else proceedSave(null);
     }
 
     function editBoat(id) {
-      const boat = participants.find(p => p.id === id);
-      if (!boat) return;
-      editingBoatId = id;
-      document.getElementById('b-nom').value = boat.nom;
-      document.getElementById('b-cap').value = boat.capitaine;
-      document.getElementById('b-rating').value = boat.rating || 100;
-      document.getElementById('b-modele').value = boat.modele || '';
-      document.getElementById('b-voile').value = boat.voile || '';
-      updateCalculatedHandicap();
+      const boat = participants.find(p => p.id === id); if (!boat) return;
+      editingBoatId = id; document.getElementById('b-nom').value = boat.nom; document.getElementById('b-cap').value = boat.capitaine;
+      document.getElementById('b-rating').value = boat.rating || 100; document.getElementById('b-modele').value = boat.modele || '';
+      document.getElementById('b-voile').value = boat.voile || ''; updateCalculatedHandicap();
       document.getElementById('form-title').textContent = "Modifier un Voilier";
       document.getElementById('btn-submit-boat').textContent = "Mettre à jour le bateau";
-      document.getElementById('btn-cancel-edit').style.display = "inline-block";
-      switchTab('tab-participants');
+      document.getElementById('btn-cancel-edit').style.display = "inline-block"; switchTab('tab-participants');
     }
 
     function cancelEdit() {
-      editingBoatId = null;
-      document.getElementById('form-boat').reset();
-      updateCalculatedHandicap();
+      editingBoatId = null; document.getElementById('form-boat').reset(); updateCalculatedHandicap();
       document.getElementById('form-title').textContent = "Ajouter un Voilier";
       document.getElementById('btn-submit-boat').textContent = "Enregistrer le bateau";
       document.getElementById('btn-cancel-edit').style.display = "none";
@@ -402,36 +303,26 @@
 
     function deleteBoat(id) {
       if (confirm("Supprimer définitivement ce voilier ?")) {
-        participants = participants.filter(p => p.id !== id);
-        localStorage.setItem('regataide_parts', JSON.stringify(participants));
-        render();
+        participants = participants.filter(p => p.id !== id); localStorage.setItem('regataide_parts', JSON.stringify(participants)); render();
       }
     }
 
-    // --- IMPORT / EXPORT DE FLOTTE (JSON LOCAL) ---
     function exportLocalFleet() {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(participants));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", "regataide_flotte.json");
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
+      const downloadAnchor = document.createElement('a'); downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "regataide_flotte.json"); document.body.appendChild(downloadAnchor);
+      downloadAnchor.click(); downloadAnchor.remove();
     }
 
     function importLocalFleet(event) {
-      const file = event.target.files[0];
-      if (!file) return;
+      const file = event.target.files[0]; if (!file) return;
       const reader = new FileReader();
       reader.onload = function(e) {
         try {
           const imported = JSON.parse(e.target.result);
           if (Array.isArray(imported)) {
             if (confirm(`Importer ces ${imported.length} bateaux et écraser votre flotte actuelle ?`)) {
-              participants = imported;
-              localStorage.setItem('regataide_parts', JSON.stringify(participants));
-              render();
-              alert("Importation réussie !");
+              participants = imported; localStorage.setItem('regataide_parts', JSON.stringify(participants)); render(); alert("Importation réussie !");
             }
           } else { alert("Format de fichier invalide."); }
         } catch (err) { alert("Erreur lors de la lecture du fichier."); }
@@ -439,47 +330,17 @@
       reader.readAsText(file);
     }
 
-    // --- PREPARATION COURSE ---
     function saveAndPrepareRace() {
-      const d = document.getElementById('race-date').value;
-      const tRaw = document.getElementById('race-time').value;
-      const t = normalizeTo24h(tRaw);
-      
+      const d = document.getElementById('race-date').value, tRaw = document.getElementById('race-time').value, t = normalizeTo24h(tRaw);
       const cb = document.querySelectorAll('input[name="sel-boats"]:checked');
       if (!d || !tRaw || cb.length === 0) return alert("Configurez la date, l'heure et sélectionnez au moins un bateau.");
-
       const selectedBoats = participants.filter(b => Array.from(cb).map(c => c.value).includes(b.id));
       activeRace = { date: d, heureDepart: t, participants: selectedBoats, arrivals: [] };
       localStorage.setItem('regataide_race', JSON.stringify(activeRace));
-      
-      // Réarmer tous les bips de départ pour la nouvelle course
       beep5Played = false; beep4Played = false; beep1Played = false; beep0Played = false;
-      
-      render();
-      updateRaceClock(); // Appel immédiat du chrono pour éviter le blanc de 1 sec
-      switchTab('tab-race');
+      render(); updateRaceClock(); switchTab('tab-race');
     }
 
-    // --- DRAG & DROP TACTILE ---
-    function handleDragStart(e, index) {
-      draggedIdx = index;
-      e.dataTransfer.effectAllowed = 'move';
-    }
-
-    function handleDragOver(e) { e.preventDefault(); }
-
-    function handleDrop(e, targetIdx) {
-      e.preventDefault();
-      if (draggedIdx === null || draggedIdx === targetIdx) return;
-      const list = activeRace.participants;
-      const [draggedItem] = list.splice(draggedIdx, 1);
-      list.splice(targetIdx, 0, draggedItem);
-      localStorage.setItem('regataide_race', JSON.stringify(activeRace));
-      draggedIdx = null;
-      render();
-    }
-
-    // --- RENDER DE L'INTERFACE ---
     function render() {
       const listDiv = document.getElementById('participants-list');
       listDiv.innerHTML = participants.map(b => `
@@ -509,23 +370,17 @@
       if (!activeRace) return;
 
       const racingBoats = activeRace.participants.filter(b => {
-        const arr = activeRace.arrivals.find(a => a.boatId === b.id);
+        const arr = (activeRace.arrivals || []).find(a => a.boatId === b.id);
         return !arr || !arr.finished;
       });
 
       const containerRacing = document.getElementById('racing-boats-list');
       containerRacing.innerHTML = racingBoats.map((b, idx) => {
-        const arr = activeRace.arrivals.find(a => a.boatId === b.id);
+        const arr = (activeRace.arrivals || []).find(a => a.boatId === b.id);
         const laps = arr ? arr.laps.length : 0;
         return `
-          <div class="sorting-item" 
-               draggable="true" 
-               ondragstart="handleDragStart(event, ${idx})" 
-               ondragover="handleDragOver(event)" 
-               ondrop="handleDrop(event, ${idx})"
-               id="row-${b.id}">
-            <span class="drag-handle">☰</span>
-            <img src="${b.photo}" class="item-img">
+          <div class="sorting-item" draggable="true" ondragstart="handleDragStart(event, ${idx})" ondragover="handleDragOver(event)" ondrop="handleDrop(event, ${idx})" id="row-${b.id}">
+            <span class="drag-handle">☰</span><img src="${b.photo}" class="item-img">
             <div class="item-details">
               <h4>${b.nom} <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${b.voile || 'N/A'})</span></h4>
               <p style="font-size:0.8rem; color:#64748b;">${b.modele || 'N/A'} | Rating : ${b.rating || 100}</p>
@@ -540,7 +395,7 @@
       }).join('');
 
       const baseTime = parseLocalPlannedTime(activeRace.date, activeRace.heureDepart);
-      const finishedArrivals = activeRace.arrivals.filter(a => a.finished).map(arr => {
+      const finishedArrivals = (activeRace.arrivals || []).filter(a => a.finished).map(arr => {
         const boat = activeRace.participants.find(p => p.id === arr.boatId);
         const finalTime = new Date(arr.laps[arr.laps.length - 1]).getTime();
         const realSec = Math.max(0, Math.round((finalTime - baseTime) / 1000));
@@ -548,55 +403,149 @@
       });
 
       finishedArrivals.sort((a, b) => a.compSec - b.compSec);
-
       const containerFinished = document.getElementById('finished-boats-list');
       containerFinished.innerHTML = finishedArrivals.map((arr, idx) => `
         <div class="finished-item">
           <div>
-            <strong>#${idx + 1} - ${arr.boat.nom}</strong> (${arr.boat.voile || 'N/A'})<br>
-            <small>Réel : ${formatSec(arr.realSec)} (Rating : ${arr.boat.rating || 100})</small>
+            <strong>#${idx + 1} - ${arr.boat.nom}</strong> (${arr.boat.voile || 'N/A'})<br><small>Réel : ${formatSec(arr.realSec)} (Rating : ${arr.boat.rating || 100})</small>
           </div>
-          <div style="text-align: right;">
-            <strong style="color: var(--secondary)">${formatSec(arr.compSec)}</strong><br>
-            <small>Compensé</small>
-          </div>
+          <div style="text-align: right;"><strong style="color: var(--secondary)">${formatSec(arr.compSec)}</strong><br><small>Compensé</small></div>
         </div>
       `).join('');
     }
 
-    // --- ENREGISTREMENT DES PASSAGES ET ARRIVEES ---
     let lastTime = 0, lastId = null, lastFinal = false;
-
     function handlePassingClick(boatId, isFinal) {
-      const now = Date.now();
-      const btn = document.getElementById(isFinal ? `btn-arr-${boatId}` : `btn-lap-${boatId}`);
-
+      const now = Date.now(), btn = document.getElementById(isFinal ? `btn-arr-${boatId}` : `btn-lap-${boatId}`);
       if (lastId === boatId && lastFinal === isFinal && (now - lastTime < 1500)) {
-        lastId = null;
-        btn.textContent = isFinal ? "ARRIVÉE (Double)" : "Passage";
-        btn.style.backgroundColor = "";
-        registerPassage(boatId, isFinal);
+        lastId = null; btn.textContent = isFinal ? "ARRIVÉE (Double)" : "Passage"; btn.style.backgroundColor = ""; registerPassage(boatId, isFinal);
       } else {
-        lastId = boatId; lastFinal = isFinal; lastTime = now;
-        btn.textContent = "VALIDER ?"; btn.style.backgroundColor = "var(--danger)";
-        setTimeout(() => {
-          if (lastId === boatId && lastFinal === isFinal) {
-            lastId = null;
-            btn.textContent = isFinal ? "ARRIVÉE (Double)" : "Passage";
-            btn.style.backgroundColor = "";
-          }
-        }, 1500);
+        lastId = boatId; lastFinal = isFinal; lastTime = now; btn.textContent = "VALIDER ?"; btn.style.backgroundColor = "var(--danger)";
+        setTimeout(() => { if (lastId === boatId && lastFinal === isFinal) { lastId = null; btn.textContent = isFinal ? "ARRIVÉE (Double)" : "Passage"; btn.style.backgroundColor = ""; } }, 1500);
       }
     }
 
     function registerPassage(boatId, isFinal) {
       if (!activeRace) return;
       const ts = new Date().toISOString();
+      if (!activeRace.arrivals) activeRace.arrivals = [];
       let arr = activeRace.arrivals.find(a => a.boatId === boatId);
+      if (!arr) { arr = { boatId, laps: [ts], finished: isFinal }; activeRace.arrivals.push(arr); }
+      else if (!arr.finished) { arr.laps.push(ts); if (isFinal) arr.finished = true; }
+      localStorage.setItem('regataide_race', JSON.stringify(activeRace)); render();
+    }
 
-      if (!arr) {
-        arr = { boatId, laps: [ts], finished: isFinal };
-        activeRace.arrivals.push(arr);
-      } else if (!arr.finished) {
-        arr.laps.push(ts);
-        if (isFinal) arr.finished = true
+    function updateRaceClock() {
+      const clockNow = new Date(), hr = clockNow.getHours().toString().padStart(2, '0'), mn = clockNow.getMinutes().toString().padStart(2, '0'), sc = clockNow.getSeconds().toString().padStart(2, '0');
+      document.getElementById('current-time-display').textContent = `Heure réelle : ${hr}:${mn}:${sc}`;
+
+      if (!activeRace) {
+        document.getElementById('countdown-timer').textContent = "--:--"; document.getElementById('countdown-label').textContent = "Attente de course"; document.getElementById('planned-time-display').textContent = "Aucune heure configurée"; return;
+      }
+      const plannedStartTime = parseLocalPlannedTime(activeRace.date, activeRace.heureDepart);
+      if (!plannedStartTime) {
+        document.getElementById('countdown-timer').textContent = "--:--"; document.getElementById('countdown-label').textContent = "Décodage impossible"; document.getElementById('planned-time-display').textContent = "Erreur de format d'heure"; return;
+      }
+      const now = Date.now(), diffMs = plannedStartTime - now;
+      document.getElementById('planned-time-display').textContent = `Départ planifié à : ${activeRace.heureDepart.substring(0, 5)}`;
+
+      if (diffMs > 300000) {
+        const totalRemainingSec = Math.round(diffMs / 1000);
+        document.getElementById('countdown-label').textContent = "En attente de procédure"; document.getElementById('countdown-timer').textContent = `-${formatSec(totalRemainingSec)}`;
+        const f = document.getElementById('flag-display'), t = document.getElementById('flag-text');
+        f.textContent = "⬜"; t.textContent = `Procédure de départ automatique dans : ${formatSec(totalRemainingSec - 300)}`;
+        beep5Played = false; beep4Played = false; beep1Played = false; beep0Played = false;
+      } else if (diffMs > 0 && diffMs <= 300000) {
+        const diffSec = Math.round(diffMs / 1000), m = Math.floor(diffSec / 60).toString().padStart(2, '0'), s = (diffSec % 60).toString().padStart(2, '0');
+        document.getElementById('countdown-timer').textContent = `-${m}:${s}`;
+        const f = document.getElementById('flag-display'), t = document.getElementById('flag-text');
+        if (diffSec <= 300 && diffSec > 240) {
+          document.getElementById('countdown-label').textContent = "Avertissement (-5 min)"; f.textContent = "🚩"; t.textContent = "Lever pavillon de classe [1 coup de corne]";
+          if (!beep5Played) { playFoghorn(600); beep5Played = true; }
+        } else if (diffSec <= 240 && diffSec > 60) {
+          document.getElementById('countdown-label').textContent = "Préparatoire (-4 min)"; f.textContent = "🟦"; t.textContent = "Lever pavillon Préparatoire (P) [1 coup de corne]";
+          if (!beep4Played) { playFoghorn(600); beep4Played = true; }
+        } else if (diffSec <= 60 && diffSec > 0) {
+          document.getElementById('countdown-label').textContent = "Dernière Minute ! (-1 min)"; f.textContent = "🏳️"; t.textContent = "Affaler pavillon Préparatoire [1 coup LONG]";
+          if (!beep1Played) { playFoghorn(1500); beep1Played = true; }
+        }
+      } else {
+        const elapsedSec = Math.round(Math.abs(diffMs) / 1000);
+        document.getElementById('countdown-label').textContent = "COURSE EN COURS"; document.getElementById('countdown-timer').textContent = formatSec(elapsedSec);
+        document.getElementById('flag-display').textContent = "🏁"; document.getElementById('flag-text').textContent = "Départ donné ! Affaler pavillon de classe.";
+        if (!beep0Played) { playFoghorn(2000); beep0Played = true; }
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      setInterval(updateRaceClock, 1000); updateRaceClock();
+      if (activeRace) {
+        document.getElementById('race-date').value = activeRace.date;
+        const tParts = activeRace.heureDepart.split(':'); document.getElementById('race-time').value = `${tParts[0]}:${tParts[1]}`;
+      }
+    });
+
+    function generateCSVString() {
+      if (!activeRace) return "";
+      const baseTime = parseLocalPlannedTime(activeRace.date, activeRace.heureDepart); if (!baseTime) return "";
+      let csv = "\uFEFFPosition;Nom;Voile;Modele;Capitaine;Rating;Handicap;Tours;Statut;Temps Reel;Temps Corrige;Chronologie des passages\n";
+      const results = activeRace.participants.map(boat => {
+        const arr = (activeRace.arrivals || []).find(a => a.boatId === boat.id);
+        let laps = 0, realSec = null, compSec = null, details = [];
+        if (arr) {
+          laps = arr.laps.length;
+          arr.laps.forEach((ts, idx) => { details.push(`Tour ${idx+1}: ${formatSec(Math.round((new Date(ts).getTime() - baseTime)/1000))}`); });
+          if (arr.finished && laps > 0) {
+            realSec = Math.max(0, Math.round((new Date(arr.laps[arr.laps.length - 1]).getTime() - baseTime)/1000));
+            compSec = Math.round(realSec * boat.handicap);
+          }
+        }
+        return { boat, laps, realSec, compSec, finished: arr?.finished, details: details.join(" | ") };
+      });
+      results.sort((a, b) => (a.compSec || Infinity) - (b.compSec || Infinity));
+      results.forEach((r, idx) => {
+        const pos = r.compSec ? idx + 1 : "DNF", realStr = r.realSec ? formatSec(r.realSec) : "N/A", compStr = r.compSec ? formatSec(r.compSec) : "N/A";
+        csv += `${pos};"${r.boat.nom}";"${r.boat.voile || ''}";"${r.boat.modele || ''}";"${r.boat.capitaine}";${r.boat.rating};${r.boat.handicap.toFixed(4)};${r.laps};${r.finished ? "ARRIVE" : "DNF"};${realStr};${compStr};"${r.details}"\n`;
+      });
+      return csv;
+    }
+
+    function exportCSV() {
+      const csv = generateCSVString(); if (!csv) return alert("Aucune course à exporter.");
+      let fileSuffix = "export";
+      if (activeRace && activeRace.date && activeRace.heureDepart) {
+        const yyyymmdd = activeRace.date.replace(/-/g, '').replace(/\//g, ''), timeParts = activeRace.heureDepart.split(':');
+        fileSuffix = yyyymmdd + timeParts[0].padStart(2, '0') + timeParts[1].padStart(2, '0');
+      }
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+      link.download = `resultats_course_${fileSuffix}.csv`; link.click();
+    }
+
+    function sendEmail() {
+      if (!activeRace) return alert("Aucune course active.");
+      const baseTime = parseLocalPlannedTime(activeRace.date, activeRace.heureDepart); if (!baseTime) return alert("Erreur de détection de l'heure.");
+      const finishedArrivals = (activeRace.arrivals || []).filter(a => a.finished).map(arr => {
+        const boat = activeRace.participants.find(p => p.id === arr.boatId);
+        const finalTime = new Date(arr.laps[arr.laps.length - 1]).getTime(), realSec = Math.max(0, Math.round((finalTime - baseTime) / 1000));
+        return { boat, realSec, compSec: Math.round(realSec * boat.handicap), laps: arr.laps.length };
+      });
+      finishedArrivals.sort((a, b) => a.compSec - b.compSec);
+      let mailBody = `Résultats de la Régate du ${activeRace.date} (Départ : ${activeRace.heureDepart})\n==================================================\nPos | Voilier (N°) | Modèle | Skipper | Rating | Réel | Compensé\n--------------------------------------------------\n`;
+      finishedArrivals.forEach((arr, idx) => {
+        mailBody += `${idx + 1} | ${arr.boat.nom} (${arr.boat.voile || 'Sans'}) | ${arr.boat.modele || 'N/A'} | ${arr.boat.capitaine} | ${arr.boat.rating} | ${formatSec(arr.realSec)} | ${formatSec(arr.compSec)}\n`;
+      });
+      mailBody += `==================================================\n\n--- DONNÉES FORMAT CSV ---\n` + generateCSVString().replace(/\uFEFF/, "");
+      const subject = encodeURIComponent(`Résultats Régate - ${activeRace.date}`), body = encodeURIComponent(mailBody);
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    }
+
+    function formatSec(sec) {
+      const h = Math.floor(sec / 3600).toString().padStart(2, '0'), m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0'), s = Math.round(sec % 60).toString().padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    render();
+  </script>
+</body>
+</html>
