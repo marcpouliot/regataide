@@ -75,6 +75,7 @@
 
   <main class="content">
 
+    <!-- ONGLET 1 : PARTICIPANTS -->
     <section id="tab-participants" class="panel active">
       <div class="card" style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <h3>💾 Partage de la Flotte (Fichier Local JSON)</h3>
@@ -118,6 +119,7 @@
       </div>
     </section>
 
+    <!-- ONGLET 2 : CONFIGURATION -->
     <section id="tab-config" class="panel">
       <div class="card">
         <h2>Nouvelle course</h2>
@@ -131,12 +133,15 @@
       </div>
     </section>
 
+    <!-- ONGLET 3 : COURSE EN DIRECT -->
     <section id="tab-race" class="panel">
+      <!-- PANEL DE DÉPART AUTOMATIQUE -->
       <div class="card signal-card">
         <div>
           <div id="countdown-label" style="color: #94a3b8; font-size: 0.9rem; text-transform: uppercase;">Attente de course</div>
           <div id="countdown-timer">--:--</div>
           <div id="planned-time-display" class="planned-info">Aucune heure configurée</div>
+          <!-- AFFICHAGE DE L'HEURE RÉELLE ACTUELLE -->
           <div id="current-time-display" style="font-size: 0.85rem; color: var(--secondary); margin-top: 4px; font-weight: bold;">Heure réelle : --:--:--</div>
         </div>
         <div class="flags-section">
@@ -169,6 +174,7 @@
   </main>
 
   <script>
+    // --- PERSISTANCE LOCALE DE L'APPLICATION ---
     let participants = JSON.parse(localStorage.getItem('regataide_parts')) || [];
     let activeRace = JSON.parse(localStorage.getItem('regataide_race')) || null;
     if (activeRace && !activeRace.arrivals) activeRace.arrivals = []; // Sécurité démarrage
@@ -176,6 +182,7 @@
     let editingBoatId = null, countdownInterval = null, audioCtx = null, draggedIdx = null;
     let beep5Played = false, beep4Played = false, beep1Played = false, beep0Played = false;
 
+    // --- DECODEUR DE DATE UNIVERSEL SÉCURISÉ NUMÉRIQUE (SAFARI / CHROME) ---
     function parseLocalPlannedTime(dateStr, timeStr) {
       if (!dateStr || !timeStr) return null;
       const formattedDate = dateStr.replace(/-/g, '/');
@@ -195,6 +202,7 @@
       return isNaN(parsed.getTime()) ? null : parsed.getTime();
     }
 
+    // --- NORMALISATEUR D'HEURE UNIVERSEL (ANTI-BUG AM/PM) ---
     function normalizeTo24h(timeStr) {
       if (!timeStr) return "00:00:00";
       let t = timeStr.trim().toUpperCase();
@@ -211,6 +219,7 @@
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
 
+    // --- SYNTHÉTISEUR DE CORNE DE BRUME PHYSIQUE (AIR HORN) ---
     function playFoghorn(durationMs = 800) {
       initAudio();
       if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -341,6 +350,65 @@
       render(); updateRaceClock(); switchTab('tab-race');
     }
 
+    // --- GLISSER-DÉPOSER DESKTOP ET TACTILE (SÉCURISÉ PAR ID) ---
+    let draggedId = null, touchedItemId = null, touchStartY = 0;
+
+    // 1. Souris (Desktop Mac)
+    function handleDragStart(e, id) {
+      draggedId = id; e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function handleDragOver(e) { e.preventDefault(); }
+
+    function handleDrop(e, targetId) {
+      e.preventDefault();
+      if (!draggedId || draggedId === targetId) return;
+      const list = activeRace.participants;
+      const draggedIdx = list.findIndex(p => p.id === draggedId);
+      const targetIdx = list.findIndex(p => p.id === targetId);
+      if (draggedIdx > -1 && targetIdx > -1) {
+        const [draggedItem] = list.splice(draggedIdx, 1);
+        list.splice(targetIdx, 0, draggedItem);
+        localStorage.setItem('regataide_race', JSON.stringify(activeRace));
+        render();
+      }
+      draggedId = null;
+    }
+
+    // 2. Tactile (iPad/Tablette - Glissement continu avec retour acoustique haptique !)
+    function handleTouchStart(e, id) {
+      touchedItemId = id; touchStartY = e.touches[0].clientY;
+    }
+
+    function handleTouchMove(e) {
+      if (!touchedItemId || !activeRace) return;
+      e.preventDefault(); // Bloque le défilement de l'écran pendant le tri
+      const currentY = e.touches[0].clientY, deltaY = currentY - touchStartY;
+      
+      if (Math.abs(deltaY) > 45) { // Seuil de 45px
+        const list = activeRace.participants;
+        const idx = list.findIndex(b => b.id === touchedItemId);
+        if (idx === -1) return;
+
+        if (deltaY < 0 && idx > 0) {
+          [list[idx], list[idx - 1]] = [list[idx - 1], list[idx]];
+          touchStartY = currentY;
+          localStorage.setItem('regataide_race', JSON.stringify(activeRace));
+          render();
+          playFoghorn(35); // Petit "clic" sonore de retour haptique
+        } else if (deltaY > 0 && idx < list.length - 1) {
+          [list[idx], list[idx + 1]] = [list[idx + 1], list[idx]];
+          touchStartY = currentY;
+          localStorage.setItem('regataide_race', JSON.stringify(activeRace));
+          render();
+          playFoghorn(35);
+        }
+      }
+    }
+
+    function handleTouchEnd() { touchedItemId = null; }
+
+    // --- RENDER ---
     function render() {
       const listDiv = document.getElementById('participants-list');
       listDiv.innerHTML = participants.map(b => `
@@ -379,7 +447,15 @@
         const arr = (activeRace.arrivals || []).find(a => a.boatId === b.id);
         const laps = arr ? arr.laps.length : 0;
         return `
-          <div class="sorting-item" draggable="true" ondragstart="handleDragStart(event, ${idx})" ondragover="handleDragOver(event)" ondrop="handleDrop(event, ${idx})" id="row-${b.id}">
+          <div class="sorting-item" 
+               draggable="true" 
+               ondragstart="handleDragStart(event, '${b.id}')" 
+               ondragover="handleDragOver(event)" 
+               ondrop="handleDrop(event, '${b.id}')"
+               ontouchstart="handleTouchStart(event, '${b.id}')"
+               ontouchmove="handleTouchMove(event)"
+               ontouchend="handleTouchEnd()"
+               id="row-${b.id}">
             <span class="drag-handle">☰</span><img src="${b.photo}" class="item-img">
             <div class="item-details">
               <h4>${b.nom} <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${b.voile || 'N/A'})</span></h4>
