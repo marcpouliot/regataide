@@ -198,7 +198,7 @@
       let year, month, day;
       if (dateParts[0].length === 4) {
         year = parseInt(dateParts[0], 10);
-        month = parseInt(dateParts[1], 10) - 1;
+        month = parseInt(dateParts[1], 10) - 1; // Janvier est 0
         day = parseInt(dateParts[2], 10);
       } else {
         day = parseInt(dateParts[0], 10);
@@ -243,21 +243,52 @@
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
 
-    function playBeep(durationMs = 200, freq = 880) {
+    // --- SYNTHÉTISEUR DE CORNE DE BRUME PHYSIQUE (AIR HORN) ---
+    function playFoghorn(durationMs = 800) {
       initAudio();
       if (audioCtx.state === 'suspended') audioCtx.resume();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      setTimeout(() => osc.stop(), durationMs);
+
+      const now = audioCtx.currentTime;
+      const durationSec = durationMs / 1000;
+
+      // Création de 2 oscillateurs légèrement désaccordés pour l'effet de battement lourd (growl)
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      
+      // Fréquences graves caractéristiques des avertisseurs de brume
+      osc1.frequency.setValueAtTime(143, now); 
+      osc2.frequency.setValueAtTime(145.5, now); 
+
+      osc1.type = 'sawtooth';
+      osc2.type = 'sawtooth';
+
+      // Filtre passe-bas pour lisser le son et donner du corps résonant
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(450, now); 
+      filter.Q.setValueAtTime(3, now); // Résonance cuivrée
+
+      // Enveloppe de gain réaliste (Pression d'air)
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.7, now + 0.05); // Montée de pression (50ms)
+      gainNode.gain.setValueAtTime(0.7, now + durationSec - 0.15); // Stabilité
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + durationSec); // Fin d'impulsion d'air
+
+      // Connexions
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      
+      osc1.stop(now + durationSec);
+      osc2.stop(now + durationSec);
     }
 
-    function testSound() { playBeep(400, 880); }
+    function testSound() { playFoghorn(600); }
 
     function switchTab(tabId) {
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -568,213 +599,4 @@
         activeRace.arrivals.push(arr);
       } else if (!arr.finished) {
         arr.laps.push(ts);
-        if (isFinal) arr.finished = true;
-      }
-      localStorage.setItem('regataide_race', JSON.stringify(activeRace));
-      render();
-    }
-
-    // --- HORLOGE DE DEPART ET CHRONOMETRE AUTOMATIQUE (DYNAMIQUE) ---
-    function updateRaceClock() {
-      // 1. Mise à jour perpétuelle de l'heure réelle de la montre de l'arbitre
-      const clockNow = new Date();
-      const hr = clockNow.getHours().toString().padStart(2, '0');
-      const mn = clockNow.getMinutes().toString().padStart(2, '0');
-      const sc = clockNow.getSeconds().toString().padStart(2, '0');
-      document.getElementById('current-time-display').textContent = `Heure réelle : ${hr}:${mn}:${sc}`;
-
-      if (!activeRace) {
-        document.getElementById('countdown-timer').textContent = "--:--";
-        document.getElementById('countdown-label').textContent = "Attente de course";
-        document.getElementById('planned-time-display').textContent = "Aucune heure configurée";
-        return;
-      }
-
-      // Utilisation du décodeur universel compatible Safari Mac/iPad et insensible à l'AM/PM
-      const plannedStartTime = parseLocalPlannedTime(activeRace.date, activeRace.heureDepart);
-      if (!plannedStartTime) {
-        document.getElementById('countdown-timer').textContent = "--:--";
-        document.getElementById('countdown-label').textContent = "Décodage impossible";
-        document.getElementById('planned-time-display').textContent = "Erreur de format d'heure";
-        return;
-      }
-
-      const now = Date.now();
-      const diffMs = plannedStartTime - now;
-
-      // Affichage sous le timer de l'heure programmée (on n'affiche que HH:MM)
-      document.getElementById('planned-time-display').textContent = `Départ planifié à : ${activeRace.heureDepart.substring(0, 5)}`;
-
-      if (diffMs > 300000) {
-        // --- PHASE A : ATTENTE DE LA PROCEDURE (Plus de 5 min avant le départ) ---
-        const totalRemainingSec = Math.round(diffMs / 1000);
-        
-        document.getElementById('countdown-label').textContent = "En attente de procédure";
-        document.getElementById('countdown-timer').textContent = `-${formatSec(totalRemainingSec)}`;
-        
-        const f = document.getElementById('flag-display');
-        const t = document.getElementById('flag-text');
-        f.textContent = "⬜";
-        t.textContent = `Procédure de départ automatique dans : ${formatSec(totalRemainingSec - 300)}`;
-
-        // Réarmement automatique des drapeaux sonores si on repousse l'heure
-        beep5Played = false; beep4Played = false; beep1Played = false; beep0Played = false;
-
-      } else if (diffMs > 0 && diffMs <= 300000) {
-        // --- PHASE B : DECOMPTE DE LA PROCEDURE ACTIVE (Moins de 5 min avant le départ) ---
-        const diffSec = Math.round(diffMs / 1000);
-        const m = Math.floor(diffSec / 60).toString().padStart(2, '0');
-        const s = (diffSec % 60).toString().padStart(2, '0');
-        
-        document.getElementById('countdown-timer').textContent = `-${m}:${s}`;
-        
-        const f = document.getElementById('flag-display');
-        const t = document.getElementById('flag-text');
-
-        if (diffSec <= 300 && diffSec > 240) {
-          document.getElementById('countdown-label').textContent = "Avertissement (-5 min)"; 
-          f.textContent = "🚩";
-          t.textContent = "Lever pavillon de classe [1 bip sonore]";
-          if (!beep5Played) { playBeep(250, 880); beep5Played = true; }
-        } else if (diffSec <= 240 && diffSec > 60) {
-          document.getElementById('countdown-label').textContent = "Préparatoire (-4 min)"; 
-          f.textContent = "🟦";
-          t.textContent = "Lever pavillon Préparatoire (P) [1 bip sonore]";
-          if (!beep4Played) { playBeep(250, 880); beep4Played = true; }
-        } else if (diffSec <= 60 && diffSec > 0) {
-          document.getElementById('countdown-label').textContent = "Dernière Minute ! (-1 min)"; 
-          f.textContent = "🏳️";
-          t.textContent = "Affaler pavillon Préparatoire [1 bip sonore LONG]";
-          if (!beep1Played) { playBeep(700, 440); beep1Played = true; }
-        }
-      } else {
-        // --- PHASE C : COURSE EN COURS (TEMPS ÉCOULÉ hh:mm:ss) ---
-        const elapsedSec = Math.round(Math.abs(diffMs) / 1000);
-        
-        document.getElementById('countdown-label').textContent = "COURSE EN COURS";
-        document.getElementById('countdown-timer').textContent = formatSec(elapsedSec);
-        document.getElementById('flag-display').textContent = "🏁";
-        document.getElementById('flag-text').textContent = "Départ donné ! Affaler pavillon de classe.";
-
-        // Signal sonore long au départ (00:00:00)
-        if (!beep0Played) {
-          playBeep(800, 600);
-          beep0Played = true;
-        }
-      }
-    }
-
-    // --- REPRISE ET ENREGISTREMENT CONTINU DE L'HORLOGE ---
-    document.addEventListener("DOMContentLoaded", () => {
-      // L'horloge tourne en continu en tâche de fond à chaque seconde
-      setInterval(updateRaceClock, 1000);
-      updateRaceClock(); // Appel immédiat pour initialiser l'affichage
-
-      // Pré-remplir la date et l'heure dans l'onglet Configuration s'ils existent déjà
-      if (activeRace) {
-        document.getElementById('race-date').value = activeRace.date;
-        const tParts = activeRace.heureDepart.split(':');
-        document.getElementById('race-time').value = `${tParts[0]}:${tParts[1]}`;
-      }
-    });
-
-    // --- GENERATION DU CSV (AVEC NOMMAGE YYYYMMDDHHMM) ---
-    function generateCSVString() {
-      if (!activeRace) return "";
-      const baseTime = parseLocalPlannedTime(activeRace.date, activeRace.heureDepart);
-      if (!baseTime) return "";
-      
-      let csv = "\uFEFFPosition;Nom;Voile;Modele;Capitaine;Rating;Handicap;Tours;Statut;Temps Reel;Temps Corrige;Chronologie des passages\n";
-      
-      const results = activeRace.participants.map(boat => {
-        const arr = activeRace.arrivals.find(a => a.boatId === boat.id); // Correction ici
-        let laps = 0, realSec = null, compSec = null, details = [];
-        if (arr) {
-          laps = arr.laps.length;
-          arr.laps.forEach((ts, idx) => {
-            details.push(`Tour ${idx+1}: ${formatSec(Math.round((new Date(ts).getTime() - baseTime)/1000))}`);
-          });
-          if (arr.finished && laps > 0) {
-            realSec = Math.max(0, Math.round((new Date(arr.laps[arr.laps.length - 1]).getTime() - baseTime)/1000));
-            compSec = Math.round(realSec * boat.handicap);
-          }
-        }
-        return { boat, laps, realSec, compSec, finished: arr?.finished, details: details.join(" | ") };
-      });
-
-      results.sort((a, b) => (a.compSec || Infinity) - (b.compSec || Infinity));
-
-      results.forEach((r, idx) => {
-        const pos = r.compSec ? idx + 1 : "DNF";
-        const realStr = r.realSec ? formatSec(r.realSec) : "N/A";
-        const compStr = r.compSec ? formatSec(r.compSec) : "N/A";
-        csv += `${pos};"${r.boat.nom}";"${r.boat.voile || ''}";"${r.boat.modele || ''}";"${r.boat.capitaine}";${r.boat.rating};${r.boat.handicap.toFixed(4)};${r.laps};${r.finished ? "ARRIVE" : "DNF"};${realStr};${compStr};"${r.details}"\n`;
-      });
-
-      return csv;
-    }
-
-    function exportCSV() {
-      const csv = generateCSVString();
-      if (!csv) return alert("Aucune course à exporter.");
-      
-      // NOMMAGE PARFAIT DU FICHIER : resultats_course_yyyymmddhhmm.csv
-      let fileSuffix = "export";
-      if (activeRace && activeRace.date && activeRace.heureDepart) {
-        const yyyymmdd = activeRace.date.replace(/-/g, '').replace(/\//g, '');
-        const timeParts = activeRace.heureDepart.split(':');
-        const hhmm = timeParts[0].padStart(2, '0') + timeParts[1].padStart(2, '0');
-        fileSuffix = yyyymmdd + hhmm;
-      }
-
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `resultats_course_${fileSuffix}.csv`;
-      link.click();
-    }
-
-    // --- ENVOI DES RESULTATS PAR EMAIL ---
-    function sendEmail() {
-      if (!activeRace) return alert("Aucune course active.");
-      const baseTime = parseLocalPlannedTime(activeRace.date, activeRace.heureDepart);
-      if (!baseTime) return alert("Erreur de détection de l'heure.");
-      
-      const finishedArrivals = activeRace.arrivals.filter(a => a.finished).map(arr => {
-        const boat = activeRace.participants.find(p => p.id === arr.boatId);
-        const finalTime = new Date(arr.laps[arr.laps.length - 1]).getTime();
-        const realSec = Math.max(0, Math.round((finalTime - baseTime) / 1000));
-        return { boat, realSec, compSec: Math.round(realSec * boat.handicap), laps: arr.laps.length };
-      });
-      
-      finishedArrivals.sort((a, b) => a.compSec - b.compSec);
-
-      let mailBody = `Résultats de la Régate du ${activeRace.date} (Départ : ${activeRace.heureDepart})\n`;
-      mailBody += `==================================================\n`;
-      mailBody += `Pos | Voilier (N°) | Modèle | Skipper | Rating | Réel | Compensé\n`;
-      mailBody += `--------------------------------------------------\n`;
-      
-      finishedArrivals.forEach((arr, idx) => {
-        mailBody += `${idx + 1} | ${arr.boat.nom} (${arr.boat.voile || 'Sans'}) | ${arr.boat.modele || 'N/A'} | ${arr.boat.capitaine} | ${arr.boat.rating} | ${formatSec(arr.realSec)} | ${formatSec(arr.compSec)}\n`;
-      });
-      
-      mailBody += `==================================================\n\n`;
-      mailBody += `--- DONNÉES FORMAT CSV ---\n`;
-      mailBody += generateCSVString().replace(/\uFEFF/, "");
-
-      const subject = encodeURIComponent(`Résultats Régate - ${activeRace.date}`);
-      const body = encodeURIComponent(mailBody);
-      window.location.href = `mailto:?subject=${subject}&body=${body}`;
-    }
-
-    function formatSec(sec) {
-      const h = Math.floor(sec / 3600).toString().padStart(2, '0');
-      const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
-      const s = Math.round(sec % 60).toString().padStart(2, '0');
-      return `${h}:${m}:${s}`;
-    }
-
-    render();
-  </script>
-</body>
-</html>
+        if (isFinal) arr.finished = true
